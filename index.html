@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>批量文件重命名并另存（带自动规则和内容预览）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- 引入JSZip用于ZIP打包 -->
+    <style>
+        /* 全局重置和基础样式：现代简约，苹果系统风格，支持暗黑模式 */
+        :root {
+            --bg-color: #f5f5f7;
+            --container-bg: rgba(255, 255, 255, 0.8);
+            --text-color: #1d1d1f;
+            --secondary-text: #6e6e73;
+            --border-color: #d2d2d7;
+            --input-bg: #f2f2f7;
+            --card-bg: white;
+            --shadow-light: rgba(0, 0, 0, 0.1);
+            --shadow-medium: rgba(0, 0, 0, 0.05);
+            --primary-blue: #007aff;
+            --primary-green: #34c759;
+            --warning-orange: #ff9500;
+            --error-red: #ff3b30;
+            --status-bg: rgba(0, 122, 255, 0.1);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1c1c1e;
+            --container-bg: rgba(28, 28, 30, 0.8);
+            --text-color: #f5f5f7;
+            --secondary-text: #8e8e93;
+            --border-color: #38383a;
+            --input-bg: #2c2c2e;
+            --card-bg: #2c2c2e;
+            --shadow-light: rgba(0, 0, 0, 0.3);
+            --shadow-medium: rgba(0, 0, 0, 0.2);
+            --primary-blue: #0a84ff;
+            --primary-green: #30d158;
+            --warning-orange: #ff9f0a;
+            --error-red: #ff453a;
+            --status-bg: rgba(10, 132, 255, 0.2);
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--container-bg);
+            backdrop-filter: blur(20px); /* 毛玻璃效果，科技感 */
+            border-radius: 20px; /* 大圆角，苹果风 */
+            padding: 40px;
+            box-shadow: 0 10px 30px var(--shadow-light); /* 微妙阴影 */
+            border: 1px solid var(--border-color);
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        h1, h2, h3 {
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 8px;
+        }
+        h2 {
+            font-size: 28px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        p {
+            color: var(--secondary-text);
+            font-size: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        /* 主题切换按钮：苹果风格开关 */
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            width: 50px;
+            height: 28px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            padding: 0;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .theme-toggle:hover {
+            border-color: var(--primary-blue);
+        }
+        .theme-toggle .slider {
+            background: var(--border-color);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            margin: 2px;
+        }
+        .theme-toggle.active .slider {
+            transform: translateX(22px);
+            background: var(--primary-blue);
+        }
+        .theme-toggle[data-theme="dark"] .slider {
+            transform: translateX(22px);
+            background: var(--primary-blue);
+        }
+        
+        /* 输入和按钮：圆角、过渡效果 */
+        input, button, select {
+            margin: 8px 0;
+            padding: 12px 16px;
+            border-radius: 12px; /* 苹果圆角 */
+            border: 1px solid var(--border-color); /* 浅灰边框 */
+            font-size: 16px;
+            transition: all 0.2s ease; /* 平滑过渡 */
+            width: 100%;
+            background: var(--card-bg);
+            color: var(--text-color);
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--primary-blue); /* 苹果蓝焦点 */
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+        }
+        button {
+            background-color: var(--primary-blue); /* 苹果蓝 */
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2);
+        }
+        button:hover {
+            background-color: #0056cc;
+            transform: translateY(-1px); /* 微抬升效果 */
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        
+        /* 规则区：卡片式，浅绿 accents */
+        .rule-section {
+            background: linear-gradient(135deg, #f0f9f0 0%, #e8f5e8 100%);
+            padding: 24px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(0, 255, 0, 0.1);
+            box-shadow: 0 4px 12px var(--shadow-medium);
+            transition: background 0.3s ease;
+        }
+        [data-theme="dark"] .rule-section {
+            background: linear-gradient(135deg, #2c2c2e 0%, #38383a 100%);
+            border-color: rgba(52, 199, 89, 0.2);
+        }
+        .rule-section h3 {
+            margin-top: 0;
+            color: var(--primary-green); /* 苹果绿 */
+            font-size: 20px;
+        }
+        .rule-input {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .rule-input input {
+            flex: 1;
+            background: var(--card-bg);
+        }
+        .rule-input button {
+            width: auto;
+            padding: 12px 20px;
+            font-size: 15px;
+        }
+        .rule-input:nth-child(even) button {
+            background-color: var(--primary-green); /* 绿按钮变体 */
+        }
+        .rule-input:nth-child(even) button:hover {
+            background-color: #28a745;
+        }
+        
+        /* 文件列表：卡片网格，hover效果 */
+        #fileList {
+            max-height: 500px;
+            overflow-y: auto;
+            display: grid;
+            gap: 16px;
+        }
+        .file-item {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 12px var(--shadow-medium);
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-color);
+        }
+        .file-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px var(--shadow-light);
+        }
+        .file-name {
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+        .file-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .file-item input {
+            width: 100%;
+            margin: 0;
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        .preview-btn {
+            width: auto;
+            padding: 8px 16px;
+            background-color: var(--primary-blue);
+            font-size: 14px;
+        }
+        
+        /* 预览区：折叠式，简约 */
+        .preview-area {
+            display: none;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--input-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: SF Mono, Monaco, monospace;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .preview-area img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+        }
+        .preview-area.binary {
+            color: var(--secondary-text);
+            font-size: 12px;
+        }
+        
+        /* 状态和进度：简约反馈 */
+        #status {
+            margin-top: 20px;
+            padding: 16px;
+            background: var(--status-bg); /* 蓝背景 */
+            border-radius: 12px;
+            color: var(--primary-blue);
+            font-weight: 500;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        .progress-bar {
+            height: 8px;
+            background-color: var(--input-bg);
+            border-radius: 4px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-blue), var(--primary-green)); /* 渐变进度 */
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        /* 保存按钮区：水平布局，间距 */
+        .save-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+            justify-content: center;
+        }
+        .save-buttons button {
+            flex: 1;
+            max-width: 200px;
+            padding: 14px 24px;
+            font-size: 16px;
+            border-radius: 12px;
+        }
+        .save-buttons button:first-child {
+            background-color: var(--primary-blue);
+        }
+        .save-buttons button:last-child {
+            background-color: var(--primary-green);
+        }
+        
+        /* 拖拽上传区：现代拖拽提示，苹果风 */
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 30px;
+            background: rgba(0, 122, 255, 0.05); /* 浅蓝提示 */
+            transition: all 0.2s ease;
+            cursor: pointer;
+            color: var(--secondary-text);
+        }
+        [data-theme="dark"] .drop-zone {
+            background: rgba(10, 132, 255, 0.1);
+        }
+        .drop-zone.dragover {
+            border-color: var(--primary-blue);
+            background: rgba(0, 122, 255, 0.1);
+            transform: scale(1.02);
+        }
+        .drop-zone p {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: var(--secondary-text);
+        }
+        .drop-zone input[type="file"] {
+            display: none; /* 隐藏原输入，拖拽优先 */
+        }
+        .drop-icon {
+            font-size: 48px;
+            color: var(--primary-blue);
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        /* 操作步骤列表：简约编号 */
+        .steps {
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            list-style: none;
+            counter-reset: step-counter;
+            transition: background 0.3s ease;
+        }
+        [data-theme="dark"] .steps {
+            background: rgba(44, 44, 46, 0.6);
+        }
+        .steps li {
+            counter-increment: step-counter;
+            margin-bottom: 12px;
+            padding-left: 30px;
+            position: relative;
+            color: var(--text-color);
+            font-size: 15px;
+        }
+        .steps li::before {
+            content: counter(step-counter) ".";
+            position: absolute;
+            left: 0;
+            color: var(--primary-blue);
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        /* 响应式：移动端优化 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+                border-radius: 16px;
+            }
+            .rule-input {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .rule-input input, .rule-input button {
+                width: 100%;
+            }
+            .file-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            .save-buttons {
+                flex-direction: column;
+            }
+            .drop-zone {
+                padding: 30px 15px;
+            }
+            .steps {
+                padding: 16px;
+            }
+            .theme-toggle {
+                top: 10px;
+                right: 10px;
+            }
+        }
+        
+        /* 滚动条美化：科技风 */
+        #fileList::-webkit-scrollbar {
+            width: 6px;
+        }
+        #fileList::-webkit-scrollbar-track {
+            background: var(--input-bg);
+            border-radius: 3px;
+        }
+        #fileList::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        #fileList::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary-text);
+        }
+        
+        /* 自动暗黑模式检测 */
+        @media (prefers-color-scheme: dark) {
+            body {
+                data-theme: dark;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+        <div class="slider"></div>
+    </button>
+    <div class="container">
+        <h2>批量文件重命名并另存</h2>
+        
+        <ul class="steps">
+            <li>可选择多个文件（支持拖拽上传）。</li>
+            <li>设置自动重命名规则并应用。</li>
+            <li>点击预览按钮查看文件内容（PDF不支持预览效果）。</li>
+            <li>可手动微调每个文件名。</li>
+            <li>点击批量保存（支持ZIP打包）。</li>
+        </ul>
+        
+        <div class="drop-zone" id="dropZone">
+            <span class="drop-icon">📁</span>
+            <p>拖拽文件到此处，或点击选择文件</p>
+            <input type="file" id="fileInput" multiple accept="*/*">
+        </div>
+        
+        <div class="rule-section">
+            <h3>智能重命名规则</h3>
+            <div class="rule-input">
+                <input type="text" id="prefix" placeholder="前缀（如：IMG_）" />
+                <button onclick="applyRule('prefix')">应用</button>
+            </div>
+            <div class="rule-input">
+                <input type="text" id="suffix" placeholder="后缀（如：_edited）" />
+                <button onclick="applyRule('suffix')">应用</button>
+            </div>
+            <div class="rule-input">
+                <input type="text" id="oldStr" placeholder="替换旧字符串（如：old）" />
+                <input type="text" id="newStr" placeholder="替换为（如：new）" />
+                <button onclick="applyRule('replace')">应用替换</button>
+            </div>
+            <div class="rule-input">
+                <button onclick="applyRule('extractMiddle')" style="width: auto; background-color: var(--warning-orange);">提取中间部分</button>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button onclick="previewRules()" style="background-color: var(--warning-orange); width: auto; flex: 1;">预览效果</button>
+                <button onclick="resetRules()" style="background-color: var(--error-red); width: auto; flex: 1;">重置</button>
+            </div>
+        </div>
+        
+        <div id="fileList"></div>
+        
+        <div class="save-buttons">
+            <button onclick="batchSaveFiles(false)">单个下载</button>
+            <button onclick="batchSaveFiles(true)">ZIP打包</button>
+        </div>
+        
+        <div id="status"></div>
+        <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    </div>
+
+    <script>
+        // 主题切换逻辑
+        function toggleTheme() {
+            const body = document.body;
+            const toggle = document.querySelector('.theme-toggle');
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.setAttribute('data-theme', 'light');
+                toggle.classList.remove('active');
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                toggle.classList.add('active');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+        
+        // 初始化主题
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.body.setAttribute('data-theme', savedTheme);
+            if (savedTheme === 'dark') {
+                document.querySelector('.theme-toggle').classList.add('active');
+            }
+        });
+        
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileListDiv = document.getElementById('fileList');
+        const status = document.getElementById('status');
+        const progressFill = document.getElementById('progressFill');
+        
+        let selectedFiles = [];
+        
+        // 点击drop zone触发文件选择
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        // 拖拽事件处理
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+                selectedFiles = files;
+                renderFileList();
+                status.innerHTML = `<p style="color: var(--primary-green);">已拖拽 ${files.length} 个文件！</p>`;
+            }
+        });
+        
+        // 原文件输入变化事件
+        fileInput.addEventListener('change', function(e) {
+            selectedFiles = Array.from(e.target.files);
+            renderFileList();
+            status.innerHTML = `<p style="color: var(--primary-green);">已选择 ${selectedFiles.length} 个文件！</p>`;
+        });
+        
+        function renderFileList() {
+            fileListDiv.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-controls">
+                        <div class="file-name">原文件: ${file.name} (${(file.size / 1024).toFixed(2)} KB)</div>
+                        <button class="preview-btn" onclick="previewFile(${index})">预览</button>
+                    </div>
+                    <input type="text" value="${file.name}" data-index="${index}" placeholder="输入新文件名" />
+                    <div id="preview-${index}" class="preview-area"></div>
+                `;
+                fileListDiv.appendChild(fileItem);
+            });
+        }
+        
+        function previewFile(index) {
+            const file = selectedFiles[index];
+            const previewDiv = document.getElementById(`preview-${index}`);
+            const isVisible = previewDiv.style.display === 'block';
+            
+            if (isVisible) {
+                previewDiv.style.display = 'none';
+                return;
+            }
+            
+            previewDiv.style.display = 'block';
+            previewDiv.innerHTML = '<p style="color: var(--secondary-text); font-style: italic;">加载中...</p>';
+            
+            const reader = new FileReader();
+            
+            if (file.type === 'application/pdf') {
+                previewDiv.innerHTML = '<p style="color: var(--error-red); font-weight: 500;">PDF文件不支持预览效果。</p><p style="color: var(--secondary-text); font-size: 14px;">建议使用专用PDF阅读器查看。</p>';
+            } else if (file.type.startsWith('image/')) {
+                reader.onload = function(e) {
+                    previewDiv.innerHTML = `<img src="${e.target.result}" alt="${file.name}" />`;
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.startsWith('text/') || !file.type) {
+                reader.onload = function(e) {
+                    previewDiv.innerHTML = `<p style="color: var(--text-color); font-weight: 500; margin-bottom: 8px;">内容预览（前500字符）：</p><div style="color: var(--text-color);">${e.target.result.substring(0, 500)}${e.target.result.length > 500 ? '...' : ''}</div>`;
+                };
+                reader.readAsText(file);
+            } else {
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    const hexPreview = Array.from(uint8Array.slice(0, 256))
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join(' ');
+                    previewDiv.innerHTML = `<p style="color: var(--text-color); font-weight: 500; margin-bottom: 8px;">二进制预览（前256字节）：</p><div class="binary">${hexPreview}</div><p style="color: var(--secondary-text); font-size: 12px; margin-top: 8px;"><em>注：二进制文件，仅显示十六进制。</em></p>`;
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+        
+        function applyRule(ruleType) {
+            if (selectedFiles.length === 0) {
+                status.innerHTML = '<p style="color: var(--error-red);">请先选择文件！</p>';
+                return;
+            }
+            
+            const newNameInputs = document.querySelectorAll('input[data-index]');
+            
+            if (ruleType === 'prefix') {
+                const prefix = document.getElementById('prefix').value.trim();
+                if (!prefix) return;
+                newNameInputs.forEach(input => {
+                    const currentValue = input.value;
+                    const parts = currentValue.split('.');
+                    const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                    const name = parts.join('.');
+                    input.value = prefix + name + ext;
+                });
+            } else if (ruleType === 'suffix') {
+                const suffix = document.getElementById('suffix').value.trim();
+                if (!suffix) return;
+                newNameInputs.forEach(input => {
+                    const currentValue = input.value;
+                    const parts = currentValue.split('.');
+                    const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                    const name = parts.join('.');
+                    input.value = name + suffix + ext;
+                });
+            } else if (ruleType === 'replace') {
+                const oldStr = document.getElementById('oldStr').value.trim();
+                const newStr = document.getElementById('newStr').value.trim();
+                if (!oldStr) return;
+                newNameInputs.forEach(input => {
+                    input.value = input.value.replace(new RegExp(escapeRegExp(oldStr), 'g'), newStr);
+                });
+            } else if (ruleType === 'extractMiddle') {
+                let warning = false;
+                newNameInputs.forEach(input => {
+                    let currentValue = input.value;
+                    const dotParts = currentValue.split('.');
+                    const ext = dotParts.length > 1 ? '.' + dotParts.pop() : '';
+                    const nameWithoutExt = dotParts.join('.');
+                    const underscoreParts = nameWithoutExt.split('_');
+                    if (underscoreParts.length >= 3 && underscoreParts[0] === '面单') {
+                        input.value = underscoreParts[1] + ext;
+                    } else {
+                        warning = true;
+                    }
+                });
+                if (warning) {
+                    status.innerHTML += '<p style="color: var(--warning-orange);">警告：部分文件名不符合模式，未提取。</p>';
+                }
+            }
+            
+            status.innerHTML = '<p style="color: var(--primary-green);">规则应用成功！</p>';
+        }
+        
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        function previewRules() {
+            if (selectedFiles.length === 0) {
+                status.innerHTML = '<p style="color: var(--error-red);">请先选择文件！</p>';
+                return;
+            }
+            
+            let previewText = '<p style="color: var(--text-color); font-weight: 500;">规则预览：</p><ul style="color: var(--text-color); margin: 8px 0;">';
+            const prefix = document.getElementById('prefix').value.trim();
+            const suffix = document.getElementById('suffix').value.trim();
+            const oldStr = document.getElementById('oldStr').value.trim();
+            const newStr = document.getElementById('newStr').value.trim();
+            
+            selectedFiles.forEach((file) => {
+                let newName = file.name;
+                if (prefix) {
+                    const parts = newName.split('.');
+                    const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                    newName = prefix + parts.join('.') + ext;
+                }
+                if (suffix) {
+                    const parts = newName.split('.');
+                    const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                    newName = parts.join('.') + suffix + ext;
+                }
+                if (oldStr && newStr) {
+                    newName = newName.replace(new RegExp(escapeRegExp(oldStr), 'g'), newStr);
+                }
+                previewText += `<li>${file.name} → ${newName}</li>`;
+            });
+            previewText += '</ul>';
+            status.innerHTML = previewText;
+        }
+        
+        function resetRules() {
+            document.getElementById('prefix').value = '';
+            document.getElementById('suffix').value = '';
+            document.getElementById('oldStr').value = '';
+            document.getElementById('newStr').value = '';
+            const newNameInputs = document.querySelectorAll('input[data-index]');
+            selectedFiles.forEach((file, idx) => {
+                newNameInputs[idx].value = file.name;
+            });
+            status.innerHTML = '<p style="color: var(--primary-green);">规则已重置！</p>';
+        }
+        
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        async function batchSaveFiles(useZip) {
+            if (selectedFiles.length === 0) {
+                status.innerHTML = '<p style="color: var(--error-red);">请先选择文件！</p>';
+                return;
+            }
+            
+            const newNameInputs = document.querySelectorAll('input[data-index]');
+            let successCount = 0;
+            let errorCount = 0;
+            const total = selectedFiles.length;
+            progressFill.style.width = '0%';
+            
+            status.innerHTML = '<p style="color: var(--primary-blue);">正在保存...</p>';
+            
+            if (useZip) {
+                const zip = new JSZip();
+                try {
+                    for (let i = 0; i < total; i++) {
+                        const file = selectedFiles[i];
+                        const newNameInput = newNameInputs[i];
+                        const newName = validateFileName(newNameInput.value.trim());
+                        if (!newName) {
+                            errorCount++;
+                            continue;
+                        }
+                        const arrayBuffer = await file.arrayBuffer();
+                        zip.file(newName, arrayBuffer);
+                        successCount++;
+                        progressFill.style.width = `${((i + 1) / total) * 100}%`;
+                    }
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+                    const url = URL.createObjectURL(zipBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'batch_files.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    errorCount = total - successCount;
+                    console.error('ZIP保存失败:', error);
+                }
+            } else {
+                for (let i = 0; i < total; i++) {
+                    const file = selectedFiles[i];
+                    const newNameInput = newNameInputs[i];
+                    const newName = validateFileName(newNameInput.value.trim());
+                    if (!newName) {
+                        errorCount++;
+                        continue;
+                    }
+                    try {
+                        if (i > 0) {
+                            await delay(1000);
+                        }
+                        const arrayBuffer = await file.arrayBuffer();
+                        const blob = new Blob([arrayBuffer], { type: file.type });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = newName;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        successCount++;
+                        progressFill.style.width = `${((i + 1) / total) * 100}%`;
+                    } catch (error) {
+                        errorCount++;
+                        console.error('保存失败:', error);
+                    }
+                }
+            }
+            
+            status.innerHTML = `<p style="color: var(--primary-green);">保存完成！成功: ${successCount}，失败: ${errorCount}</p>`;
+        }
+        
+        function validateFileName(name) {
+            if (!name) return null;
+            return name.replace(/[\/\\:*?"<>|]/g, '_');
+        }
+    </script>
+</body>
+</html>
