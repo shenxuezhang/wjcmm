@@ -53,7 +53,7 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
         .container {
-            max-width: 900px;
+            max-width: 1200px;
             margin: 0 auto;
             background: var(--container-bg);
             backdrop-filter: blur(20px); /* 毛玻璃效果，科技感 */
@@ -62,6 +62,7 @@
             box-shadow: 0 10px 30px var(--shadow-light); /* 微妙阴影 */
             border: 1px solid var(--border-color);
             transition: background 0.3s ease, border-color 0.3s ease;
+            position: relative;
         }
         h1, h2, h3 {
             font-weight: 600;
@@ -151,12 +152,29 @@
             transform: translateY(0);
         }
         
+        /* 主内容布局：左右两列 */
+        .main-content {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .left-panel {
+            flex: 1.5; /* 进一步扩大左侧比例以提供更多空间 */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 750px; /* 扩大最大宽度到750px，确保规则输入框placeholder完全可见 */
+        }
+        .right-panel {
+            flex: 1.5; /* 相对缩小右侧比例，平衡布局 */
+            min-width: 0;
+        }
+        
         /* 规则区：卡片式，浅绿 accents */
         .rule-section {
             background: linear-gradient(135deg, #f0f9f0 0%, #e8f5e8 100%);
             padding: 24px;
             border-radius: 16px;
-            margin-bottom: 30px;
             border: 1px solid rgba(0, 255, 0, 0.1);
             box-shadow: 0 4px 12px var(--shadow-medium);
             transition: background 0.3s ease;
@@ -172,18 +190,22 @@
         }
         .rule-input {
             display: flex;
-            gap: 12px;
+            gap: 8px; /* 减少gap以增加输入框空间 */
             align-items: center;
             margin-bottom: 12px;
         }
         .rule-input input {
             flex: 1;
             background: var(--card-bg);
+            min-width: 0; /* 允许输入框收缩但确保placeholder可见 */
+            font-size: 14px; /* 略微减小字体以改善显示 */
         }
         .rule-input button {
             width: auto;
-            padding: 12px 20px;
-            font-size: 15px;
+            padding: 12px 16px; /* 略微减小padding以节省空间 */
+            font-size: 14px; /* 匹配输入框字体 */
+            flex-shrink: 0; /* 按钮不收缩 */
+            white-space: nowrap; /* 防止按钮文字换行 */
         }
         .rule-input:nth-child(even) button {
             background-color: var(--primary-green); /* 绿按钮变体 */
@@ -194,7 +216,7 @@
         
         /* 文件列表：卡片网格，hover效果 */
         #fileList {
-            max-height: 500px;
+            max-height: 600px;
             overflow-y: auto;
             display: grid;
             gap: 16px;
@@ -301,12 +323,10 @@
         .save-buttons {
             display: flex;
             gap: 12px;
-            margin-top: 30px;
             justify-content: center;
         }
         .save-buttons button {
             flex: 1;
-            max-width: 200px;
             padding: 14px 24px;
             font-size: 16px;
             border-radius: 12px;
@@ -324,7 +344,6 @@
             border-radius: 16px;
             padding: 40px 20px;
             text-align: center;
-            margin-bottom: 30px;
             background: rgba(0, 122, 255, 0.05); /* 浅蓝提示 */
             transition: all 0.2s ease;
             cursor: pointer;
@@ -389,6 +408,12 @@
                 padding: 20px;
                 margin: 10px;
                 border-radius: 16px;
+            }
+            .main-content {
+                flex-direction: column;
+            }
+            .left-panel {
+                max-width: none;
             }
             .rule-input {
                 flex-direction: column;
@@ -456,41 +481,60 @@
             <li>点击批量保存（支持ZIP打包）。</li>
         </ul>
         
-        <div class="drop-zone" id="dropZone">
-            <span class="drop-icon">📁</span>
-            <p>拖拽文件到此处，或点击选择文件</p>
-            <input type="file" id="fileInput" multiple accept="*/*">
-        </div>
-        
-        <div class="rule-section">
-            <h3>智能重命名规则</h3>
-            <div class="rule-input">
-                <input type="text" id="prefix" placeholder="前缀（如：IMG_）" />
-                <button onclick="applyRule('prefix')">应用</button>
+        <div class="main-content">
+            <div class="left-panel">
+                <div class="drop-zone" id="dropZone">
+                    <span class="drop-icon">📁</span>
+                    <p>拖拽文件到此处，或点击选择文件</p>
+                    <input type="file" id="fileInput" multiple accept="*/*">
+                </div>
+                
+                <div class="rule-section">
+                    <h3>智能重命名规则</h3>
+                    <div class="rule-input">
+                        <input type="text" id="prefix" placeholder="前缀（如：IMG_）" />
+                        <button onclick="applyRule('prefix')">应用</button>
+                    </div>
+                    <div class="rule-input">
+                        <input type="text" id="suffix" placeholder="后缀（如：_edited）" />
+                        <button onclick="applyRule('suffix')">应用</button>
+                    </div>
+                    <div class="rule-input">
+                        <input type="text" id="oldStr" placeholder="替换旧字符串（如：old）" />
+                        <input type="text" id="newStr" placeholder="替换为（如：new）" />
+                        <button onclick="applyRule('replace')">应用替换</button>
+                    </div>
+                    <div class="rule-input">
+                        <input type="text" id="trimBeforeSymbol" placeholder="删除符号前内容（如：_）" />
+                        <button onclick="applyRule('trimBefore')">应用删除前</button>
+                    </div>
+                    <div class="rule-input">
+                        <input type="text" id="trimAfterSymbol" placeholder="删除符号后内容（如：_）" />
+                        <button onclick="applyRule('trimAfter')">应用删除后</button>
+                    </div>
+                    <div class="rule-input">
+                        <input type="text" id="extractBeforeSymbol" placeholder="提取前符号（如：面单_）" />
+                        <input type="text" id="extractAfterSymbol" placeholder="提取后符号（如：_）" />
+                        <button onclick="applyRule('extractBetween')">应用提取中间</button>
+                    </div>
+                    <div class="rule-input">
+                        <button onclick="applyRule('extractMiddle')" style="width: auto; background-color: var(--warning-orange);">提取中间部分（固定）</button>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 16px;">
+                        <button onclick="previewRules()" style="background-color: var(--warning-orange); width: auto; flex: 1;">预览效果</button>
+                        <button onclick="resetRules()" style="background-color: var(--error-red); width: auto; flex: 1;">重置</button>
+                    </div>
+                </div>
+                
+                <div class="save-buttons">
+                    <button onclick="batchSaveFiles(false)">单个下载</button>
+                    <button onclick="batchSaveFiles(true)">ZIP打包</button>
+                </div>
             </div>
-            <div class="rule-input">
-                <input type="text" id="suffix" placeholder="后缀（如：_edited）" />
-                <button onclick="applyRule('suffix')">应用</button>
+            
+            <div class="right-panel">
+                <div id="fileList"></div>
             </div>
-            <div class="rule-input">
-                <input type="text" id="oldStr" placeholder="替换旧字符串（如：old）" />
-                <input type="text" id="newStr" placeholder="替换为（如：new）" />
-                <button onclick="applyRule('replace')">应用替换</button>
-            </div>
-            <div class="rule-input">
-                <button onclick="applyRule('extractMiddle')" style="width: auto; background-color: var(--warning-orange);">提取中间部分</button>
-            </div>
-            <div style="display: flex; gap: 12px; margin-top: 16px;">
-                <button onclick="previewRules()" style="background-color: var(--warning-orange); width: auto; flex: 1;">预览效果</button>
-                <button onclick="resetRules()" style="background-color: var(--error-red); width: auto; flex: 1;">重置</button>
-            </div>
-        </div>
-        
-        <div id="fileList"></div>
-        
-        <div class="save-buttons">
-            <button onclick="batchSaveFiles(false)">单个下载</button>
-            <button onclick="batchSaveFiles(true)">ZIP打包</button>
         </div>
         
         <div id="status"></div>
@@ -685,6 +729,50 @@
                 newNameInputs.forEach(input => {
                     input.value = input.value.replace(new RegExp(escapeRegExp(oldStr), 'g'), newStr);
                 });
+            } else if (ruleType === 'trimBefore') {
+                const symbol = document.getElementById('trimBeforeSymbol').value.trim();
+                if (!symbol) return;
+                newNameInputs.forEach(input => {
+                    const currentValue = input.value;
+                    const index = currentValue.indexOf(symbol);
+                    if (index !== -1) {
+                        const parts = currentValue.split('.');
+                        const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                        const name = parts.join('.');
+                        const newNameWithoutExt = name.substring(index + symbol.length);
+                        input.value = newNameWithoutExt + ext;
+                    }
+                });
+            } else if (ruleType === 'trimAfter') {
+                const symbol = document.getElementById('trimAfterSymbol').value.trim();
+                if (!symbol) return;
+                newNameInputs.forEach(input => {
+                    const currentValue = input.value;
+                    const index = currentValue.indexOf(symbol);
+                    if (index !== -1) {
+                        const parts = currentValue.split('.');
+                        const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                        const name = parts.join('.');
+                        const newNameWithoutExt = name.substring(0, index);
+                        input.value = newNameWithoutExt + ext;
+                    }
+                });
+            } else if (ruleType === 'extractBetween') {
+                const beforeSymbol = document.getElementById('extractBeforeSymbol').value.trim();
+                const afterSymbol = document.getElementById('extractAfterSymbol').value.trim();
+                if (!beforeSymbol || !afterSymbol) return;
+                newNameInputs.forEach(input => {
+                    const currentValue = input.value;
+                    const startIndex = currentValue.indexOf(beforeSymbol) + beforeSymbol.length;
+                    const endIndex = currentValue.indexOf(afterSymbol, startIndex);
+                    if (startIndex !== beforeSymbol.length - 1 && endIndex !== -1) {
+                        const parts = currentValue.split('.');
+                        const ext = parts.length > 1 ? '.' + parts.pop() : '';
+                        const name = parts.join('.');
+                        const middle = name.substring(startIndex, endIndex);
+                        input.value = middle + ext;
+                    }
+                });
             } else if (ruleType === 'extractMiddle') {
                 let warning = false;
                 newNameInputs.forEach(input => {
@@ -749,6 +837,10 @@
             document.getElementById('suffix').value = '';
             document.getElementById('oldStr').value = '';
             document.getElementById('newStr').value = '';
+            document.getElementById('trimBeforeSymbol').value = '';
+            document.getElementById('trimAfterSymbol').value = '';
+            document.getElementById('extractBeforeSymbol').value = '';
+            document.getElementById('extractAfterSymbol').value = '';
             const newNameInputs = document.querySelectorAll('input[data-index]');
             selectedFiles.forEach((file, idx) => {
                 newNameInputs[idx].value = file.name;
