@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>批量文件重命名并另存（带自动规则和内容预览）</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- 引入JSZip用于ZIP打包 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script> <!-- 引入pdf.js用于PDF预览 -->
     <style>
         /* 全局重置和基础样式：现代简约，苹果系统风格，支持暗黑模式 */
         :root {
@@ -262,6 +263,14 @@
             color: var(--secondary-text);
             font-size: 12px;
         }
+        .preview-area canvas {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 2px 8px var(--shadow-medium);
+        }
         
         /* 状态和进度：简约反馈 */
         #status {
@@ -442,7 +451,7 @@
         <ul class="steps">
             <li>可选择多个文件（支持拖拽上传）。</li>
             <li>设置自动重命名规则并应用。</li>
-            <li>点击预览按钮查看文件内容（PDF不支持预览效果）。</li>
+            <li>点击预览按钮查看文件内容（支持PDF预览第一页）。</li>
             <li>可手动微调每个文件名。</li>
             <li>点击批量保存（支持ZIP打包）。</li>
         </ul>
@@ -489,6 +498,9 @@
     </div>
 
     <script>
+        // PDF.js worker设置
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
         // 主题切换逻辑
         function toggleTheme() {
             const body = document.body;
@@ -586,7 +598,35 @@
             const reader = new FileReader();
             
             if (file.type === 'application/pdf') {
-                previewDiv.innerHTML = '<p style="color: var(--error-red); font-weight: 500;">PDF文件不支持预览效果。</p><p style="color: var(--secondary-text); font-size: 14px;">建议使用专用PDF阅读器查看。</p>';
+                reader.onload = function(e) {
+                    const loadingTask = pdfjsLib.getDocument({data: e.target.result});
+                    loadingTask.promise.then(function(pdf) {
+                        pdf.getPage(1).then(function(page) {
+                            const scale = 1.5;
+                            const viewport = page.getViewport({scale: scale});
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.height = viewport.height;
+                            canvas.width = viewport.width;
+                            previewDiv.innerHTML = '<p style="color: var(--text-color); font-weight: 500; margin-bottom: 8px;">PDF预览（第1页）：</p>';
+                            previewDiv.appendChild(canvas);
+                            const renderContext = {
+                                canvasContext: context,
+                                viewport: viewport
+                            };
+                            page.render(renderContext).promise.then(function() {
+                                // 渲染完成
+                            });
+                        }).catch(function(error) {
+                            previewDiv.innerHTML = '<p style="color: var(--error-red);">PDF预览加载失败。</p>';
+                            console.error('PDF预览错误:', error);
+                        });
+                    }).catch(function(error) {
+                        previewDiv.innerHTML = '<p style="color: var(--error-red);">PDF加载失败。</p>';
+                        console.error('PDF加载错误:', error);
+                    });
+                };
+                reader.readAsArrayBuffer(file);
             } else if (file.type.startsWith('image/')) {
                 reader.onload = function(e) {
                     previewDiv.innerHTML = `<img src="${e.target.result}" alt="${file.name}" />`;
