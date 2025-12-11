@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Excel 表格内容翻译工具 | Qwen-Max</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    :root {
+        /* Apple System Colors */
+        --ios-blue: #007AFF;
+        --ios-blue-hover: #0062cc;
+        --ios-green: #34C759;
+        --ios-green-hover: #248a3d;
+        --ios-orange: #FF9500;
+        
+        /* Light Mode Variables */
+        --bg-color: #F5F5F7;
+        --card-bg: rgba(255, 255, 255, 0.72);
+        --card-border: rgba(255, 255, 255, 0.5);
+        --text-primary: #1D1D1F;
+        --text-secondary: #86868B;
+        --border-color: #D2D2D7;
+        --input-bg: rgba(255, 255, 255, 0.8);
+        --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.08);
+        --glass-filter: saturate(180%) blur(20px);
+        --table-header: #F5F5F7;
+        --table-hover: #F2F2F7;
+        
+        /* Tooltip Colors */
+        --tooltip-bg: rgba(0, 0, 0, 0.8);
+        --tooltip-text: #fff;
+    }
+
+    [data-theme="dark"] {
+        /* Dark Mode Variables */
+        --bg-color: #000000;
+        --card-bg: rgba(28, 28, 30, 0.72);
+        --card-border: rgba(255, 255, 255, 0.1);
+        --text-primary: #F5F5F7;
+        --text-secondary: #86868B;
+        --border-color: #38383A;
+        --input-bg: rgba(44, 44, 46, 0.8);
+        --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+        --table-header: #1C1C1E;
+        --table-hover: #2C2C2E;
+        
+        /* Tooltip Colors Dark */
+        --tooltip-bg: rgba(255, 255, 255, 0.9);
+        --tooltip-text: #000;
+    }
+
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+        background-color: var(--bg-color);
+        background-image: 
+            radial-gradient(at 0% 0%, rgba(0, 122, 255, 0.15) 0px, transparent 50%),
+            radial-gradient(at 100% 0%, rgba(255, 59, 48, 0.1) 0px, transparent 50%),
+            radial-gradient(at 100% 100%, rgba(52, 199, 89, 0.15) 0px, transparent 50%);
+        background-attachment: fixed;
+        background-size: cover;
+        min-height: 100vh;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        transition: background 0.4s ease;
+    }
+
+    .container {
+        width: 100%;
+        max-width: 980px;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 20px;
+        backdrop-filter: var(--glass-filter);
+        -webkit-backdrop-filter: var(--glass-filter);
+        box-shadow: var(--shadow-lg);
+        padding: 40px;
+        position: relative;
+        animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+    /* =========================================
+       新版主题切换按钮样式 (Start)
+       ========================================= */
+    .theme-toggle {
+        position: absolute; 
+        top: 30px; 
+        right: 30px; 
+        width: 44px; 
+        height: 44px;
+        background: var(--input-bg);
+        border: 1px solid var(--border-color); 
+        border-radius: 50%;
+        cursor: pointer; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
+        color: var(--text-primary); 
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        overflow: hidden; /* 隐藏超出部分以实现切换动画 */
+        z-index: 50;
+    }
+
+    /* 悬停效果 */
+    .theme-toggle:hover { 
+        background: var(--card-bg); 
+        transform: translateY(-2px); 
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        border-color: var(--ios-blue);
+    }
+
+    /* 图标通用样式 */
+    .theme-icon {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+    }
+
+    /* 浅色模式下：显示月亮，隐藏太阳 */
+    [data-theme="light"] .icon-sun { opacity: 0; transform: rotate(90deg) scale(0.5); }
+    [data-theme="light"] .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
+
+    /* 深色模式下：显示太阳，隐藏月亮 */
+    [data-theme="dark"] .icon-sun { opacity: 1; transform: rotate(0deg) scale(1); }
+    [data-theme="dark"] .icon-moon { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+
+    /* Tooltip (悬停提示文字) */
+    .theme-toggle::after {
+        content: attr(data-tooltip); /* 读取 data-tooltip 属性 */
+        position: absolute;
+        top: 120%;
+        right: 0;
+        background: var(--tooltip-bg);
+        color: var(--tooltip-text);
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+        opacity: 0;
+        transform: translateY(-8px);
+        pointer-events: none;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .theme-toggle:hover::after {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    /* =========================================
+       新版主题切换按钮样式 (End)
+       ========================================= */
+
+    /* =========================================
+       新增：API 状态检测样式
+       ========================================= */
+    .api-status {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 25px; /* 原 subtitle margin-bottom: 30px */
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--text-secondary);
+        animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    .api-status span.text { color: var(--text-secondary); }
+
+    /* 成功状态 */
+    .api-status.success .status-dot {
+        background-color: var(--ios-green);
+        box-shadow: 0 0 8px rgba(52, 199, 89, 0.4);
+        animation: none;
+    }
+    .api-status.success span.text { color: var(--ios-green); }
+
+    /* 失败状态 */
+    .api-status.error .status-dot {
+        background-color: #FF3B30; /* iOS Red */
+        box-shadow: 0 0 8px rgba(255, 59, 48, 0.4);
+        animation: none;
+    }
+    .api-status.error span.text { color: #FF3B30; }
+
+    @keyframes pulse { 0% { opacity: 0.4; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.4; transform: scale(0.9); } }
+    /* =========================================
+       API 状态样式结束
+       ========================================= */
+
+    h1 {
+        text-align: center; font-size: 2.5rem; margin: 0 0 10px; font-weight: 700;
+        letter-spacing: -0.02em;
+        background: linear-gradient(135deg, var(--text-primary) 30%, var(--text-secondary));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .subtitle { text-align: center; color: var(--text-secondary); margin-bottom: 15px; /* 减少下边距以容纳状态条 */ }
+
+    /* Upload Box */
+    .upload-box {
+        border: 2px dashed var(--border-color); border-radius: 16px; padding: 50px 20px;
+        text-align: center; background: rgba(128, 128, 128, 0.02); transition: all 0.3s; cursor: pointer;
+    }
+    .upload-box:hover { border-color: var(--ios-blue); background: rgba(0, 122, 255, 0.05); }
+    .upload-icon { font-size: 3rem; margin-bottom: 15px; color: var(--ios-blue); }
+
+    /* Controls Grid */
+    .controls-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;
+        text-align: left;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    .control-label { font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); margin-left: 4px; }
+    
+    select, input, textarea {
+        padding: 12px; font-size: 1rem; border-radius: 12px;
+        border: 1px solid var(--border-color); background-color: var(--input-bg);
+        color: var(--text-primary); outline: none; font-family: inherit; width: 100%;
+        box-sizing: border-box; transition: border-color 0.2s;
+    }
+    select:focus, textarea:focus { border-color: var(--ios-blue); }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* Resume Banner */
+    .resume-banner {
+        background: rgba(255, 149, 0, 0.1); border: 1px solid var(--ios-orange); color: var(--ios-orange);
+        padding: 12px 20px; border-radius: 12px; margin-bottom: 20px; display: none;
+        align-items: center; justify-content: space-between; font-weight: 500;
+    }
+    .resume-banner button { margin: 0; padding: 6px 16px; font-size: 0.9rem; background: var(--ios-orange); }
+
+    /* Preview Table */
+    .preview-box {
+        margin: 20px 0; height: 300px; overflow: auto;
+        border: 1px solid var(--border-color); border-radius: 12px;
+        background: var(--bg-color);
+    }
+    .preview-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; table-layout: fixed; }
+    .preview-table th {
+        background: var(--table-header); position: sticky; top: 0; z-index: 10;
+        font-weight: 600; color: var(--text-secondary); padding: 10px 16px;
+        border-bottom: 1px solid var(--border-color); text-align: left;
+    }
+    .preview-table td {
+        padding: 10px 16px; border-bottom: 1px solid var(--border-color);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);
+    }
+    .preview-table tr:hover td { background: var(--table-hover); }
+    .col-translated { color: var(--ios-blue); font-weight: 500; background: rgba(0,122,255,0.05) !important; }
+
+    /* Buttons & Progress */
+    button {
+        padding: 14px 32px; font-size: 1.05rem; border: none; border-radius: 999px;
+        cursor: pointer; background: var(--ios-blue); color: white; font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); transition: transform 0.2s;
+    }
+    button:hover { transform: scale(1.02); }
+    button.secondary { background: rgba(128,128,128,0.2); color: var(--text-primary); box-shadow: none; }
+    
+    .status-bar {
+        display: flex; justify-content: space-between; align-items: center;
+        background: rgba(128,128,128,0.05); padding: 10px 20px; border-radius: 12px;
+        margin-top: 20px; font-size: 0.9rem; color: var(--text-secondary);
+    }
+
+    progress { width: 100%; height: 8px; border-radius: 4px; overflow: hidden; border: none; background: rgba(128,128,128,0.2); }
+    progress::-webkit-progress-value { background: var(--ios-blue); transition: width 0.3s; }
+
+    .icon-svg { width: 40px; height: 40px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+</style>
+</head>
+<body data-theme="light">
+
+<div class="container">
+    <!-- 
+       [更新] 主题切换按钮 
+       data-tooltip 用于 CSS ::after 伪元素显示提示文字
+    -->
+    <button class="theme-toggle" id="themeToggle" data-tooltip="切换深色模式">
+        <!-- 太阳图标 (深色模式显示) -->
+        <svg class="theme-icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <!-- 月亮图标 (浅色模式显示) -->
+        <svg class="theme-icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+    </button>
+
+    <h1>Excel 智能翻译 Pro</h1>
+    <p class="subtitle">多语言 · 并发加速 · 断点续传 · 导入导出</p>
+
+    <!-- [更新] API 状态显示条 -->
+    <div id="apiStatusDisplay" class="api-status">
+        <span class="status-dot"></span>
+        <span class="text">正在检测 API 连接...</span>
+    </div>
+
+    <!-- 断点续传提示 -->
+    <div class="resume-banner" id="resumeBanner">
+        <span>⚠️ 检测到上次未完成的翻译任务，是否继续？</span>
+        <div>
+            <button class="secondary" id="discardSessionBtn" style="padding:6px 12px; font-size:0.8rem; margin-right:8px;">放弃</button>
+            <button id="resumeSessionBtn" style="padding:6px 12px; font-size:0.8rem;">继续翻译</button>
+        </div>
+    </div>
+
+    <div class="upload-box" id="uploadArea">
+        <svg class="icon-svg upload-icon" viewBox="0 0 24 24"><path d="M21.2 15c.7 0 1.2.5 1.2 1.2v3.6c0 .7-.5 1.2-1.2 1.2H2.8c-.7 0-1.2-.5-1.2-1.2v-3.6c0-.7.5-1.2 1.2-1.2"></path><path d="M12 15V3"></path><path d="M7 8l5-5 5 5"></path></svg>
+        <h3>点击或拖拽上传 Excel</h3>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+    </div>
+
+    <div id="config" style="display:none;">
+        <div class="controls-grid">
+            <div class="control-group">
+                <span class="control-label">1. 选择需翻译的列</span>
+                <select id="columnSelect"></select>
+            </div>
+            <div class="control-group">
+                <span class="control-label">2. 目标语言</span>
+                <select id="targetLang">
+                    <option value="中文" selected>🇨🇳 中文 (Chinese)</option>
+                    <option value="英语">🇺🇸 英语 (English)</option>
+                    <option value="罗马尼亚语">🇷🇴 罗马尼亚语 (Romanian)</option>
+                    <option value="法语">🇫🇷 法语 (French)</option>
+                    <option value="西班牙语">🇪🇸 西班牙语 (Spanish)</option>
+                    <option value="日语">🇯🇵 日语 (Japanese)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-group" style="margin-bottom: 20px;">
+            <span class="control-label">3. 自定义提示词 (System Prompt)</span>
+            <textarea id="customPrompt" placeholder="例如：请翻译为电商风格，保持专业术语不翻译...">你是一个专业的翻译助手。请将以下每行内容翻译成{lang}，专有名词、品牌、型号等一律保留原样，只返回纯翻译结果，每行对应一行，不加任何编号。</textarea>
+        </div>
+
+        <!-- 费用预估显示 -->
+        <div class="status-bar" id="costEstimate" style="background: rgba(0,122,255,0.05); color: var(--ios-blue);">
+            <span>📊 选中列共 0 字符</span>
+            <span>预计消耗: ~0 Token</span>
+        </div>
+
+        <div class="preview-box" id="previewBox">
+            <div class="preview-header" style="padding:10px 16px; border-bottom:1px solid var(--border-color); font-size:0.85rem; color:var(--text-secondary);">
+                实时预览（前 20 行）
+            </div>
+            <table class="preview-table" id="previewTable">
+                <thead id="previewThead"></thead>
+                <tbody id="previewTbody"></tbody>
+            </table>
+        </div>
+
+        <div style="text-align:center; margin-top:30px;">
+            <button id="startBtn">🚀 开始并发翻译</button>
+        </div>
+    </div>
+
+    <div id="progress" style="display:none; margin-top:30px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.95rem;">
+            <span id="progressStatus">正在处理...</span>
+            <span id="progressText">0 / 0</span>
+        </div>
+        <progress id="progressBar" value="0" max="100"></progress>
+    </div>
+
+    <div id="result" style="display:none; text-align:center; margin-top:40px;">
+        <h2 style="color:var(--ios-green)">🎉 翻译完成</h2>
+        <button class="success" id="downloadBtn" style="background:var(--ios-green)">下载 Excel 文件</button>
+    </div>
+
+    <div style="text-align:center; margin-top:50px; opacity:0.5; font-size:0.8rem;">
+        Powered by Qwen-Max · 3x Concurrency
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+// ============ 核心配置 ============
+const _0x4e3d = ['c2stZDJhZWYyY2U0YjIzNDM5MGJiZDkzODUxNjlhZDMxNmM='];
+const API_KEY = atob(_0x4e3d[0]);
+const BATCH_SIZE = 20; // 每批次数量
+const CONCURRENCY_LIMIT = 3; // 并发请求数 (3个请求同时发)
+
+// ============ 全局变量 ============
+let rawData = [];
+let toTranslate = []; // 待翻译的纯文本数组
+let translatedResults = []; // 存储翻译结果
+let fileKey = ""; // 用于缓存的唯一Key (文件名+大小)
+
+// ============ 主题逻辑 (已更新以支持新按钮和提示) ============
+const themeToggle = document.getElementById('themeToggle');
+const body = document.body;
+
+function updateThemeUI() {
+    const isDark = body.getAttribute('data-theme') === 'dark';
+    // 更新 Tooltip 文字: 如果当前是暗色，提示"切换浅色"，反之亦然
+    themeToggle.setAttribute('data-tooltip', isDark ? '切换浅色模式' : '切换深色模式');
+}
+
+themeToggle.onclick = () => {
+    const isDark = body.getAttribute('data-theme') === 'dark';
+    const newTheme = isDark ? 'light' : 'dark';
+    body.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeUI();
+};
+
+// 初始化主题
+if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) body.setAttribute('data-theme', 'dark');
+updateThemeUI(); // 初始化 Tooltip
+
+// ============ [更新] API 状态检测逻辑 ============
+async function checkApiConnection() {
+    const statusContainer = document.getElementById('apiStatusDisplay');
+    const statusText = statusContainer.querySelector('.text');
+    
+    try {
+        // 使用一个极其轻量的请求 (token=1) 测试连通性
+        // 使用 OpenAI 兼容接口格式
+        const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+            method: 'POST',
+            headers: { 
+                'Authorization': 'Bearer ' + API_KEY, 
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({
+                model: "qwen-max",
+                messages: [{ role: "user", content: "hi" }],
+                max_tokens: 1 // 最小化 token 消耗
+            })
+        });
+
+        if (response.ok) {
+            statusContainer.className = 'api-status success';
+            statusText.textContent = '千问 · Qwen-Max 已就绪';
+        } else {
+            throw new Error(`Status ${response.status}`);
+        }
+    } catch (e) {
+        console.error("API Connection Check Failed:", e);
+        statusContainer.className = 'api-status error';
+        statusText.textContent = '千问 · Qwen-Max 无法连接';
+    }
+}
+
+// ============ 初始化检查：断点续传与API检测 ============
+window.onload = () => {
+    // 1. 运行 API 检查
+    checkApiConnection();
+
+    // 2. 检查断点续传
+    const savedSession = localStorage.getItem('translation_session_meta');
+    if (savedSession) {
+        document.getElementById('resumeBanner').style.display = 'flex';
+        document.getElementById('uploadArea').style.display = 'none';
+    }
+};
+
+document.getElementById('discardSessionBtn').onclick = () => {
+    localStorage.removeItem('translation_session_meta');
+    localStorage.removeItem('translation_session_data');
+    localStorage.removeItem('translation_session_raw');
+    location.reload();
+};
+
+document.getElementById('resumeSessionBtn').onclick = () => {
+    const meta = JSON.parse(localStorage.getItem('translation_session_meta'));
+    const data = JSON.parse(localStorage.getItem('translation_session_data'));
+    const raw = JSON.parse(localStorage.getItem('translation_session_raw'));
+    
+    rawData = raw;
+    translatedResults = data;
+    toTranslate = meta.toTranslate;
+    fileKey = meta.fileKey;
+
+    // 恢复 UI 状态
+    document.getElementById('resumeBanner').style.display = 'none';
+    document.getElementById('config').style.display = 'none';
+    startTranslationProcess(true); // true 表示是恢复任务
+};
+
+// ============ 文件处理 ============
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+
+uploadArea.onclick = () => fileInput.click();
+uploadArea.ondragover = e => { e.preventDefault(); uploadArea.classList.add('dragover'); }
+uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
+uploadArea.ondrop = e => { e.preventDefault(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+fileInput.onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+
+function handleFile(file) {
+    fileKey = `${file.name}_${file.size}`;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type: 'array'});
+        rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header:1, defval:""});
+
+        // 填充列选择
+        const select = document.getElementById('columnSelect');
+        select.innerHTML = '';
+        rawData[0].forEach((header, idx) => select.appendChild(new Option(header || `第 ${idx+1} 列`, idx)));
+        
+        // 触发一次预估
+        updateCostEstimate();
+        
+        uploadArea.style.display = 'none';
+        document.getElementById('config').style.display = 'block';
+        updatePreviewTable();
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// ============ 交互逻辑更新 ============
+document.getElementById('columnSelect').onchange = () => {
+    updateCostEstimate();
+    updatePreviewTable();
+};
+
+function updateCostEstimate() {
+    const colIdx = parseInt(document.getElementById('columnSelect').value);
+    const textData = rawData.slice(1).map(r => (r[colIdx]||'').toString());
+    const totalChars = textData.join('').length;
+    // 粗略估算：中文约 1 char = 1 token，英文 4 char = 1 token。取保守值 1.3 倍
+    const estTokens = Math.ceil(totalChars * 1.3);
+    
+    document.getElementById('costEstimate').innerHTML = `
+        <span>📊 选中列共 ${totalChars.toLocaleString()} 字符</span>
+        <span>⚡️ 预计消耗: ~${estTokens.toLocaleString()} Token</span>
+    `;
+}
+
+function updatePreviewTable() {
+    const colIdx = parseInt(document.getElementById('columnSelect').value);
+    const thead = document.getElementById('previewThead');
+    const tbody = document.getElementById('previewTbody');
+    
+    thead.innerHTML = `<tr><th>原文 (${rawData[0][colIdx]})</th><th>实时翻译预览</th></tr>`;
+    tbody.innerHTML = '';
+
+    const maxRows = Math.min(20, rawData.length - 1);
+    for (let i = 1; i <= maxRows; i++) {
+        const tr = document.createElement('tr');
+        tr.id = `preview-row-${i-1}`; // 标记 ID 方便实时更新
+        tr.innerHTML = `
+            <td title="${rawData[i][colIdx]}">${rawData[i][colIdx]}</td>
+            <td class="col-translated" id="preview-cell-${i-1}">...</td>
+        `;
+        tbody.appendChild(tr);
+    }
+}
+
+// ============ 核心翻译流程 (并发+重试) ============
+document.getElementById('startBtn').onclick = () => {
+    const colIdx = parseInt(document.getElementById('columnSelect').value);
+    toTranslate = rawData.slice(1).map(row => (row[colIdx] || '').toString().trim());
+    
+    // 初始化结果数组
+    translatedResults = new Array(toTranslate.length).fill(null); // null 代表未翻译
+
+    // 保存 Session 初始状态
+    saveSessionMeta(toTranslate, fileKey);
+    saveSessionRaw(rawData);
+    
+    startTranslationProcess(false);
+};
+
+async function startTranslationProcess(isResume) {
+    document.getElementById('config').style.display = 'none';
+    document.getElementById('progress').style.display = 'block';
+    
+    // 构造批次索引 [0, 20, 40...]
+    let batches = [];
+    for (let i = 0; i < toTranslate.length; i += BATCH_SIZE) {
+        // 如果是断点续传，跳过已经有结果的批次
+        if (isResume && translatedResults[i] !== null && translatedResults[i] !== undefined && translatedResults[i] !== "") {
+            continue; 
+        }
+        batches.push(i);
+    }
+
+    if (batches.length === 0 && isResume) {
+        finishProcess();
+        return;
+    }
+
+    // 并发控制器
+    let activeWorkers = 0;
+    let batchIndex = 0;
+    const totalBatches = batches.length;
+    let completedBatches = 0;
+
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const progressStatus = document.getElementById('progressStatus');
+    
+    // 基础进度 (如果是续传，先设置进度条)
+    let initialProgress = ((toTranslate.length - batches.length * BATCH_SIZE) / toTranslate.length) * 100;
+    if (!isResume) initialProgress = 0;
+
+    return new Promise((resolve) => {
+        function next() {
+            // 所有批次分发完毕，且所有 worker 归位
+            if (batchIndex >= batches.length && activeWorkers === 0) {
+                finishProcess();
+                resolve();
+                return;
+            }
+
+            while (activeWorkers < CONCURRENCY_LIMIT && batchIndex < batches.length) {
+                const startIdx = batches[batchIndex++];
+                activeWorkers++;
+                
+                const batchData = toTranslate.slice(startIdx, startIdx + BATCH_SIZE);
+                
+                // 执行翻译
+                processBatch(batchData, startIdx).then(() => {
+                    activeWorkers--;
+                    completedBatches++;
+                    
+                    // 更新进度 UI
+                    const currentCount = Math.min(toTranslate.length, startIdx + BATCH_SIZE); // 粗略显示
+                    // 更精确的进度计算
+                    const totalDone = toTranslate.length - ((totalBatches - completedBatches) * BATCH_SIZE);
+                    const percent = Math.min(100, (totalDone / toTranslate.length) * 100);
+                    
+                    progressBar.value = percent;
+                    progressText.textContent = `${Math.floor(percent)}%`;
+                    progressStatus.textContent = `正在并发翻译... (剩余 ${totalBatches - completedBatches} 批)`;
+
+                    next(); // 递归调用，填补空闲 worker
+                });
+            }
+        }
+        next();
+    });
+}
+
+// 处理单个批次
+async function processBatch(texts, startIdx) {
+    // 1. 过滤空行，保留索引映射
+    const validItems = texts.map((t, i) => ({ text: t, relIdx: i })).filter(item => item.text.length > 0);
+    
+    if (validItems.length === 0) {
+        // 全是空行，直接填充
+        texts.forEach((_, i) => updateResultAndUI(startIdx + i, ""));
+        saveSessionData();
+        return;
+    }
+
+    // 2. 准备 Prompt
+    const targetLang = document.getElementById('targetLang').value;
+    const userPromptTemplate = document.getElementById('customPrompt').value;
+    const systemPrompt = userPromptTemplate.replace('{lang}', targetLang);
+
+    // 3. 调用 API (带重试)
+    const apiRes = await fetchWithRetry(validItems.map(v => v.text), systemPrompt);
+    
+    if (apiRes.success) {
+        const translations = apiRes.translations;
+        
+        // 4. 回填数据
+        let transPtr = 0;
+        for (let i = 0; i < texts.length; i++) {
+            const globalIdx = startIdx + i;
+            if (texts[i].length === 0) {
+                updateResultAndUI(globalIdx, "");
+            } else {
+                const resText = translations[transPtr++] || "翻译失败";
+                updateResultAndUI(globalIdx, resText);
+            }
+        }
+        // 5. 保存缓存
+        saveSessionData();
+    } else {
+        // 批次失败，填入错误信息但不中断流程
+        texts.forEach((_, i) => updateResultAndUI(startIdx + i, "[ERROR] " + apiRes.error));
+    }
+}
+
+// 更新结果数组并刷新预览 UI
+function updateResultAndUI(index, text) {
+    translatedResults[index] = text;
+    // 如果该行在预览表格的可视范围内 (前20行)，更新它
+    const uiCell = document.getElementById(`preview-cell-${index}`);
+    if (uiCell) {
+        uiCell.textContent = text;
+        uiCell.style.color = 'var(--text-primary)';
+        uiCell.parentElement.style.backgroundColor = 'rgba(52, 199, 89, 0.1)'; // Flash green
+        setTimeout(() => uiCell.parentElement.style.backgroundColor = '', 500);
+    }
+}
+
+// 智能重试 Fetch
+async function fetchWithRetry(texts, systemPrompt, retries = 3) {
+    const url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+    const payload = {
+        model: "qwen-max",
+        messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: texts.join('\n') }
+        ],
+        temperature: 0.3
+    };
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                // 如果是 429 (限流) 或 5xx (服务器错误)，等待后重试
+                if (response.status === 429 || response.status >= 500) {
+                    console.warn(`Attempt ${attempt} failed: ${response.status}. Retrying...`);
+                    await new Promise(r => setTimeout(r, 3000 * attempt)); // 递增等待 3s, 6s, 9s
+                    continue; 
+                }
+                throw new Error(`API Error ${response.status}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0].message.content.trim();
+            // 分割行，处理可能少返回的情况
+            let lines = content.split('\n').map(l => l.trim());
+            // 简单对齐：如果返回行数少于请求行数，补空
+            /* 注意：Qwen 可能会合并行，这里简单处理，实际生产环境需要更复杂的对齐逻辑或单行翻译 */
+            /* 这里的逻辑假设模型严格遵循 instruction "每行对应一行" */
+            return { success: true, translations: lines };
+
+        } catch (error) {
+            if (attempt === retries) return { success: false, error: error.message };
+        }
+    }
+}
+
+// ============ 结束处理 ============
+function finishProcess() {
+    // 组装最终 Excel
+    const colIdx = parseInt(document.getElementById('columnSelect').value || 0);
+    const newColIdx = rawData[0].length;
+    
+    // 添加表头
+    const langName = document.getElementById('targetLang').value;
+    rawData[0][newColIdx] = rawData[0][colIdx] + `_${langName}`;
+
+    // 填充内容
+    for (let i = 0; i < toTranslate.length; i++) {
+        rawData[i + 1][newColIdx] = translatedResults[i];
+    }
+
+    // 清除缓存
+    localStorage.removeItem('translation_session_meta');
+    localStorage.removeItem('translation_session_data');
+    localStorage.removeItem('translation_session_raw');
+
+    document.getElementById('progress').style.display = 'none';
+    document.getElementById('result').style.display = 'block';
+}
+
+document.getElementById('downloadBtn').onclick = () => {
+    const ws = XLSX.utils.aoa_to_sheet(rawData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "翻译结果");
+    XLSX.writeFile(wb, `翻译完成_${new Date().toISOString().slice(0,10)}.xlsx`);
+};
+
+// ============ 本地存储辅助函数 ============
+function saveSessionMeta(toTranslateArr, key) {
+    const meta = { toTranslate: toTranslateArr, fileKey: key, date: Date.now() };
+    localStorage.setItem('translation_session_meta', JSON.stringify(meta));
+}
+function saveSessionRaw(raw) {
+    // 注意：如果文件巨大，localStorage 可能会爆（通常限制 5MB）。
+    // 实际生产建议用 IndexedDB，这里为了单文件简单性使用 try-catch
+    try { localStorage.setItem('translation_session_raw', JSON.stringify(raw)); } catch(e) { console.warn("Storage full"); }
+}
+function saveSessionData() {
+    localStorage.setItem('translation_session_data', JSON.stringify(translatedResults));
+}
+
+</script>
+</body>
+</html>
