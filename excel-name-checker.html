@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel文件与文件夹名称匹配检查工具</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(90deg, #2c3e50, #4a6491);
+            color: white;
+            padding: 25px;
+            text-align: center;
+            border-bottom: 5px solid #3498db;
+        }
+        
+        header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1rem;
+            opacity: 0.9;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            padding: 25px;
+            gap: 25px;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 1.3rem;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        .card-title i {
+            color: #3498db;
+            font-size: 1.2rem;
+        }
+        
+        .upload-area {
+            border: 3px dashed #3498db;
+            border-radius: 10px;
+            padding: 25px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+        
+        .upload-area:hover {
+            background: #e3f2fd;
+            border-color: #2980b9;
+        }
+        
+        .upload-area i {
+            font-size: 3.5rem;
+            color: #3498db;
+            margin-bottom: 12px;
+        }
+        
+        .upload-area h3 {
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-size: 1.2rem;
+        }
+        
+        .upload-area p {
+            color: #7f8c8d;
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+        }
+        
+        .btn {
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+        
+        .btn i {
+            font-size: 1rem;
+        }
+        
+        .btn-folder {
+            background: linear-gradient(90deg, #2ecc71, #27ae60); /* 默认绿色 */
+            box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3);
+        }
+        /* 新增：文件夹选择成功后的样式 */
+        .btn-folder.selected {
+            background: linear-gradient(90deg, #27ae60, #1e8449); /* 更深的绿色 */
+            box-shadow: 0 4px 10px rgba(46, 204, 113, 0.5);
+        }
+        
+        .btn-folder:hover {
+            box-shadow: 0 6px 15px rgba(46, 204, 113, 0.4);
+        }
+        
+        .btn-analyze {
+            background: linear-gradient(90deg, #9b59b6, #8e44ad);
+            box-shadow: 0 4px 10px rgba(155, 89, 182, 0.3);
+            width: 100%;
+            justify-content: center;
+            padding: 14px;
+            margin-top: 10px;
+            font-size: 1.1rem;
+        }
+        
+        .btn-analyze:hover {
+            box-shadow: 0 6px 15px rgba(155, 89, 182, 0.4);
+        }
+        
+        .file-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 12px;
+            display: none; /* 默认隐藏，通过JS控制显示 */
+        }
+        
+        .file-info.active {
+            display: block;
+        }
+        
+        .file-info p {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+            padding: 6px 0;
+            border-bottom: 1px dashed #e0e0e0;
+            font-size: 0.95rem;
+        }
+        
+        .file-info p:last-child {
+            border-bottom: none;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin: 15px 0;
+            gap: 10px;
+        }
+        
+        .stat-box {
+            background: white;
+            border-radius: 10px;
+            padding: 12px;
+            min-width: 100px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin: 8px 0;
+        }
+        
+        .stat-matched .stat-value {
+            color: #27ae60;
+        }
+        
+        .stat-missing .stat-value {
+            color: #e74c3c;
+        }
+        
+        .stat-extra .stat-value {
+            color: #f39c12;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+        }
+        
+        .stat-desc {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+        }
+        
+        .result-list {
+            max-height: 250px;
+            overflow-y: auto;
+            margin-top: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        
+        .result-item {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95rem;
+        }
+        
+        .result-item.matched {
+            background: rgba(46, 204, 113, 0.1);
+            border-left: 4px solid #27ae60;
+        }
+        
+        .result-item.missing {
+            background: rgba(231, 76, 60, 0.1);
+            border-left: 4px solid #c0392b;
+        }
+        
+        .result-item.extra {
+            background: rgba(243, 156, 18, 0.1);
+            border-left: 4px solid #d35400;
+        }
+        
+        .result-item i {
+            font-size: 1.1rem;
+        }
+        
+        .progress-container {
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #9b59b6);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 18px;
+            background: #2c3e50;
+            color: #ecf0f1;
+            font-size: 0.85rem;
+        }
+        
+        .highlight {
+            color: #3498db;
+            font-weight: 600;
+        }
+        
+        .instructions {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            font-size: 0.95rem;
+        }
+        
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .instructions ol {
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 6px;
+        }
+        
+        .folder-path {
+            word-break: break-all;
+            background: #f1f1f1;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .column-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+            background: #f0f8ff;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #d1e7ff;
+        }
+        
+        .selector-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .selector-group label {
+            min-width: 80px;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        .selector-group select {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            background: white;
+            font-size: 0.95rem;
+            min-width: 150px;
+        }
+        
+        .preview {
+            margin-top: 12px;
+        }
+        
+        .preview h4 {
+            margin-bottom: 8px;
+            font-size: 1rem;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .preview-container {
+            max-height: 220px;
+            overflow: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .preview-table th,
+        .preview-table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px;
+            text-align: left;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+        
+        .preview-table th {
+            background-color: #3498db;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        
+        .preview-table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        
+        .preview-table tr:hover {
+            background-color: #e3f2fd;
+        }
+        
+        .selected-column {
+            background-color: #ffeb3b !important;
+            font-weight: bold;
+        }
+        
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        @media (max-width: 768px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .stat-box {
+                width: 100%;
+            }
+            
+            header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .btn-analyze {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-file-excel"></i> Excel文件与文件夹名称匹配检查工具</h1>
+            <p>上传Excel文件并选择文件夹，系统将自动比较文件名并显示匹配结果</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="card-grid">
+                <div class="card">
+                    <h2 class="card-title"><i class="fas fa-file-upload"></i> 步骤1：上传Excel文件</h2>
+                    <div class="upload-area" id="excelUploadArea">
+                        <i class="fas fa-file-excel"></i>
+                        <h3>上传Excel文件</h3>
+                        <p>拖放您的Excel文件到这里，或点击浏览文件</p>
+                        <p class="small">支持 .xlsx 和 .xls 格式</p>
+                        <input type="file" id="excelFileInput" accept=".xlsx, .xls" hidden>
+                        <button class="btn" id="browseExcelBtn"><i class="fas fa-folder-open"></i> 浏览文件</button>
+                    </div>
+                    <div class="file-info" id="excelFileInfo">
+                        <p><strong>文件名：</strong> <span id="excelFileName">-</span></p>
+                        <p><strong>文件大小：</strong> <span id="excelFileSize">-</span></p>
+                        <p><strong>最后修改：</strong> <span id="excelFileModified">-</span></p>
+                    </div>
+                    
+                    <div class="column-selector" id="columnSelector" style="display: none;">
+                        <h3><i class="fas fa-columns"></i> 选择匹配列</h3>
+                        <div class="selector-group">
+                            <label for="sheetSelect">工作表：</label>
+                            <select id="sheetSelect"></select>
+                        </div>
+                        <div class="selector-group">
+                            <label for="columnSelect">匹配列：</label>
+                            <select id="columnSelect"></select>
+                        </div>
+                        
+                        <div class="preview">
+                            <h4><i class="fas fa-table"></i> 数据预览（前5行）</h4>
+                            <div class="preview-container">
+                                <table class="preview-table" id="previewTable">
+                                    <thead>
+                                        <tr id="previewHeader"></tr>
+                                    </thead>
+                                    <tbody id="previewBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2 class="card-title"><i class="fas fa-folder"></i> 步骤2：选择文件夹</h2>
+                    <div class="instructions">
+                        <h3><i class="fas fa-info-circle"></i> 如何选择文件夹：</h3>
+                        <ol>
+                            <li>点击下方"选择文件夹"按钮</li>
+                            <li>在文件选择对话框中，<strong>导航到您想要的文件夹</strong></li>
+                            <li>不要选择任何文件，直接点击"选择文件夹"或"打开"按钮</li>
+                        </ol>
+                    </div>
+                    <div class="upload-area" id="folderUploadArea">
+                        <i class="fas fa-folder-open"></i>
+                        <h3>选择文件夹</h3>
+                        <p>选择包含需要检查文件的文件夹</p>
+                        <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+                        <button class="btn btn-folder" id="selectFolderBtn"><i class="fas fa-folder"></i> 选择文件夹</button>
+                    </div>
+                    <div class="file-info" id="folderInfo">
+                        <p><strong>文件夹名称：</strong> <span id="folderPath">-</span></p>
+                        <p><strong>文件数量：</strong> <span id="fileCount">-</span></p>
+                        <div class="folder-path" id="folderFullPath">-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title"><i class="fas fa-play-circle"></i> 步骤3：开始匹配</h2>
+                <p>确认已上传Excel文件并选择文件夹后，点击下方按钮开始匹配：</p>
+                <button class="btn btn-analyze" id="analyzeBtn" disabled><i class="fas fa-cogs"></i> 开始匹配分析</button>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title"><i class="fas fa-chart-bar"></i> 匹配统计结果</h2>
+                <div class="stats">
+                    <div class="stat-box stat-matched">
+                        <div class="stat-label">匹配成功</div>
+                        <div class="stat-value" id="matchedCount">0</div>
+                        <div class="stat-desc">文件存在</div>
+                    </div>
+                    <div class="stat-box stat-missing">
+                        <div class="stat-label">匹配失败</div>
+                        <div class="stat-value" id="missingCount">0</div>
+                        <div class="stat-desc">文件缺失</div>
+                    </div>
+                    <div class="stat-box stat-extra">
+                        <div class="stat-label">额外文件</div>
+                        <div class="stat-value" id="extraCount">0</div>
+                        <div class="stat-desc">不在Excel中</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="result-grid">
+                <div class="result-card">
+                    <h2 class="card-title"><i class="fas fa-list"></i> 匹配失败文件列表</h2>
+                    <p>以下文件在Excel中存在但未在文件夹中找到：</p>
+                    <div class="result-list" id="missingFilesList">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="result-card">
+                    <h2 class="card-title"><i class="fas fa-file-exclamation"></i> 额外文件列表</h2>
+                    <p>以下文件存在于文件夹中但未在Excel中列出：</p>
+                    <div class="result-list" id="extraFilesList">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="result-card">
+                    <h2 class="card-title"><i class="fas fa-check-circle"></i> 匹配成功文件列表</h2>
+                    <p>以下文件在Excel和文件夹中均存在：</p>
+                    <div class="result-list" id="matchedFilesList">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Excel文件与文件夹名称匹配检查工具 © 2025 | 本工具完全在浏览器中运行，您的文件不会上传到任何服务器</p>
+        </footer>
+    </div>
+
+    <script>
+        // DOM元素
+        const excelUploadArea = document.getElementById('excelUploadArea');
+        const excelFileInput = document.getElementById('excelFileInput');
+        const browseExcelBtn = document.getElementById('browseExcelBtn');
+        const excelFileInfo = document.getElementById('excelFileInfo');
+        const folderInput = document.getElementById('folderInput');
+        const selectFolderBtn = document.getElementById('selectFolderBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progressBar = document.getElementById('progressBar');
+        const columnSelector = document.getElementById('columnSelector');
+        const sheetSelect = document.getElementById('sheetSelect');
+        const columnSelect = document.getElementById('columnSelect');
+        const previewHeader = document.getElementById('previewHeader');
+        const previewBody = document.getElementById('previewBody');
+        
+        // 文件信息元素
+        const excelFileName = document.getElementById('excelFileName');
+        const excelFileSize = document.getElementById('excelFileSize');
+        const excelFileModified = document.getElementById('excelFileModified');
+        const folderInfo = document.getElementById('folderInfo'); // 获取文件夹信息容器
+        const folderPath = document.getElementById('folderPath');
+        const fileCount = document.getElementById('fileCount');
+        const folderFullPath = document.getElementById('folderFullPath');
+        
+        // 统计元素
+        const matchedCount = document.getElementById('matchedCount');
+        const missingCount = document.getElementById('missingCount');
+        const extraCount = document.getElementById('extraCount');
+        
+        // 文件列表元素
+        const missingFilesList = document.getElementById('missingFilesList');
+        const extraFilesList = document.getElementById('extraFilesList');
+        const matchedFilesList = document.getElementById('matchedFilesList');
+        
+        // 存储数据
+        let currentExcelFile = null;
+        let currentWorkbook = null;
+        let folderFiles = []; // 存储文件夹中文件的 {name, path} 对象
+        let selectedColumnIndex = 0; // 当前选中的Excel列索引
+        
+        // 事件监听器
+        browseExcelBtn.addEventListener('click', () => {
+            excelFileInput.click();
+        });
+        
+        excelFileInput.addEventListener('change', handleExcelFileSelect);
+        
+        excelUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            excelUploadArea.style.backgroundColor = '#e3f2fd';
+            excelUploadArea.style.borderColor = '#2980b9';
+        });
+        
+        excelUploadArea.addEventListener('dragleave', () => {
+            excelUploadArea.style.backgroundColor = '#f8f9fa';
+            excelUploadArea.style.borderColor = '#3498db';
+        });
+        
+        excelUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            excelUploadArea.style.backgroundColor = '#f8f9fa';
+            excelUploadArea.style.borderColor = '#3498db';
+            
+            if (e.dataTransfer.files.length) {
+                const file = e.dataTransfer.files[0];
+                if (isExcelFile(file)) {
+                    handleExcelFile(file);
+                } else {
+                    alert('请上传Excel文件 (.xlsx 或 .xls)');
+                }
+            }
+        });
+        
+        selectFolderBtn.addEventListener('click', () => {
+            folderInput.click();
+        });
+        
+        folderInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFolderSelect(e.target.files);
+            } else {
+                // 如果用户取消了选择，清空文件夹信息
+                resetFolderInfo();
+            }
+            updateAnalyzeButtonState(); // 每次文件或文件夹选择状态改变时，更新分析按钮状态
+        });
+        
+        analyzeBtn.addEventListener('click', () => {
+            if (!currentExcelFile) {
+                alert('请先上传Excel文件');
+                return;
+            }
+            
+            if (folderFiles.length === 0) {
+                alert('请先选择文件夹');
+                return;
+            }
+            
+            analyzeFiles();
+        });
+        
+        sheetSelect.addEventListener('change', () => {
+            updateColumnSelector();
+        });
+        
+        columnSelect.addEventListener('change', () => {
+            selectedColumnIndex = parseInt(columnSelect.value);
+            updatePreviewTable();
+        });
+
+        // 统一更新分析按钮及文件夹选择按钮状态的函数
+        function updateAnalyzeButtonState() {
+            const excelSelected = currentExcelFile !== null;
+            const folderSelected = folderFiles.length > 0;
+
+            // 更新分析按钮状态
+            analyzeBtn.disabled = !(excelSelected && folderSelected);
+
+            // 更新文件夹选择按钮的视觉反馈
+            if (folderSelected) {
+                selectFolderBtn.innerHTML = '<i class="fas fa-check-circle"></i> 文件夹已选择';
+                selectFolderBtn.classList.add('selected'); // 添加selected类以改变颜色
+            } else {
+                selectFolderBtn.innerHTML = '<i class="fas fa-folder"></i> 选择文件夹';
+                selectFolderBtn.classList.remove('selected'); // 移除selected类以恢复默认颜色
+            }
+        }
+        
+        // 处理Excel文件选择
+        function handleExcelFileSelect(e) {
+            const file = e.target.files[0];
+            if (file && isExcelFile(file)) {
+                handleExcelFile(file);
+            } else if (file) {
+                alert('请上传Excel文件 (.xlsx 或 .xls)');
+            }
+            updateAnalyzeButtonState(); // 每次文件或文件夹选择状态改变时，更新分析按钮状态
+        }
+        
+        // 检查是否为Excel文件
+        function isExcelFile(file) {
+            const acceptedTypes = [
+                'application/vnd.ms-excel',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-excel.sheet.macroEnabled.12'
+            ];
+            
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            return acceptedTypes.includes(file.type) || 
+                   ['xls', 'xlsx'].includes(fileExtension);
+        }
+        
+        // 处理Excel文件
+        function handleExcelFile(file) {
+            currentExcelFile = file;
+            
+            // 显示文件信息
+            excelFileName.textContent = file.name;
+            excelFileSize.textContent = formatFileSize(file.size);
+            excelFileModified.textContent = new Date(file.lastModified).toLocaleString();
+            excelFileInfo.classList.add('active');
+            columnSelector.style.display = 'flex';
+            
+            // 读取Excel内容
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                currentWorkbook = XLSX.read(data, {type: 'array'});
+                
+                // 填充工作表选择器
+                populateSheetSelector();
+                updateAnalyzeButtonState(); // 更新分析按钮状态
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // 填充工作表选择器
+        function populateSheetSelector() {
+            sheetSelect.innerHTML = '';
+            
+            currentWorkbook.SheetNames.forEach((sheetName, index) => {
+                const option = document.createElement('option');
+                option.value = sheetName;
+                option.textContent = `${index + 1}. ${sheetName}`;
+                sheetSelect.appendChild(option);
+            });
+            
+            // 默认选择第一个工作表
+            updateColumnSelector();
+        }
+        
+        // 更新列选择器
+        function updateColumnSelector() {
+            const selectedSheet = sheetSelect.value;
+            const worksheet = currentWorkbook.Sheets[selectedSheet];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            
+            // 获取表头（第一行）
+            const headers = jsonData[0] || [];
+            
+            // 填充列选择器
+            columnSelect.innerHTML = '';
+            headers.forEach((header, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = header || `列 ${index + 1}`;
+                columnSelect.appendChild(option);
+            });
+            
+            // 默认选择第一列
+            selectedColumnIndex = 0;
+            columnSelect.value = '0';
+            
+            // 更新预览
+            updatePreviewTable();
+        }
+        
+        // 更新预览表格
+        function updatePreviewTable() {
+            const selectedSheet = sheetSelect.value;
+            const worksheet = currentWorkbook.Sheets[selectedSheet];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            
+            // 清空预览表格
+            previewHeader.innerHTML = '';
+            previewBody.innerHTML = '';
+            
+            // 添加表头
+            const headers = jsonData[0] || [];
+            headers.forEach((header, index) => {
+                const th = document.createElement('th');
+                th.textContent = header || `列 ${index + 1}`;
+                if (index === selectedColumnIndex) {
+                    th.classList.add('selected-column');
+                }
+                previewHeader.appendChild(th);
+            });
+            
+            // 添加数据行（最多5行）
+            const rowCount = Math.min(5, jsonData.length - 1);
+            for (let i = 1; i <= rowCount; i++) {
+                const row = document.createElement('tr');
+                const rowData = jsonData[i] || [];
+                
+                headers.forEach((_, index) => {
+                    const td = document.createElement('td');
+                    td.textContent = rowData[index] || '';
+                    if (index === selectedColumnIndex) {
+                        td.classList.add('selected-column');
+                    }
+                    row.appendChild(td);
+                });
+                
+                previewBody.appendChild(row);
+            }
+        }
+        
+        // 处理文件夹选择
+        function handleFolderSelect(files) {
+            folderFiles = [];
+            let commonFolderPath = ''; // 用于存储共同的父路径
+
+            // 获取第一个文件的路径，作为基准
+            if (files.length > 0 && files[0].webkitRelativePath) {
+                const fullPathParts = files[0].webkitRelativePath.split('/');
+                fullPathParts.pop(); // 移除文件名
+                commonFolderPath = fullPathParts.join('/');
+            }
+
+            // 填充 folderFiles 数组
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                folderFiles.push({
+                    name: file.name,
+                    path: file.webkitRelativePath // 包含相对路径
+                });
+            }
+            
+            // 显示文件夹信息
+            folderPath.textContent = commonFolderPath || '根目录'; // 显示共同父路径，或 '根目录'
+            fileCount.textContent = `${folderFiles.length} 个文件`;
+            folderFullPath.textContent = `完整路径（基于第一个文件）： ${commonFolderPath || '未选择或根目录'}`;
+            folderInfo.classList.add('active'); // 激活信息显示区域
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 重置文件夹信息显示
+        function resetFolderInfo() {
+            folderFiles = [];
+            folderPath.textContent = '-';
+            fileCount.textContent = '-';
+            folderFullPath.textContent = '-';
+            folderInfo.classList.remove('active'); // 隐藏信息显示区域
+        }
+        
+        // 分析文件匹配情况
+        function analyzeFiles() {
+            // 重置结果
+            matchedCount.textContent = '0';
+            missingCount.textContent = '0';
+            extraCount.textContent = '0';
+            missingFilesList.innerHTML = '';
+            extraFilesList.innerHTML = '';
+            matchedFilesList.innerHTML = '';
+            
+            // 重置进度条
+            progressBar.style.width = '0%';
+            
+            // 获取用户选择的列
+            selectedColumnIndex = parseInt(columnSelect.value);
+            
+            // 获取选定的工作表
+            const selectedSheet = sheetSelect.value;
+            const worksheet = currentWorkbook.Sheets[selectedSheet];
+            
+            // 转换为JSON，跳过表头（从第二行开始读取数据）
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            
+            // 提取Excel文件中的文件名（从选定的列，并跳过第一行）
+            const excelFileNames = [];
+            for (let i = 1; i < jsonData.length; i++) { // 从索引1开始，跳过第一行（标题）
+                const row = jsonData[i];
+                if (row && row[selectedColumnIndex] !== undefined && row[selectedColumnIndex] !== null) {
+                    const filename = String(row[selectedColumnIndex]).trim();
+                    if (filename !== '') {
+                        excelFileNames.push(filename);
+                    }
+                }
+            }
+            
+            console.log('从Excel中提取的文件名:', excelFileNames);
+            
+            // 获取文件夹中的文件名（原始大小写和转换为小写以供匹配）
+            const folderFileNamesRaw = folderFiles.map(file => file.name); // 原始文件名列表
+            const folderFileNamesLower = new Set(folderFileNamesRaw.map(name => name.toLowerCase())); // 用于快速查找的Set，转为小写
+
+            // 匹配结果
+            const matchedFiles = []; // {excelName: '...', folderName: '...'}
+            const missingFiles = []; // Excel中有但文件夹没有的文件名
+            const extraFiles = [];   // 文件夹中有但Excel没有的文件名 (原始文件名)
+            
+            // 匹配过程
+            let progress = 0;
+            const totalExcelItems = excelFileNames.length;
+            
+            excelFileNames.forEach((excelName, index) => {
+                // 检查是否在文件夹中存在（不区分大小写匹配）
+                if (folderFileNamesLower.has(excelName.toLowerCase())) {
+                    // 匹配成功
+                    // 找到文件夹中实际的原始大小写的文件名
+                    const actualFolderName = folderFileNamesRaw.find(name => name.toLowerCase() === excelName.toLowerCase());
+                    if (actualFolderName) { // 确保找到
+                        matchedFiles.push({
+                            excelName: excelName,
+                            folderName: actualFolderName
+                        });
+                    }
+                } else {
+                    // 匹配失败（Excel中有，但文件夹没有）
+                    missingFiles.push(excelName);
+                }
+                
+                // 更新进度条
+                progress = Math.floor(((index + 1) / totalExcelItems) * 100);
+                progressBar.style.width = `${progress}%`;
+            });
+
+            // 查找额外文件（文件夹中有，但Excel没有）
+            const excelFileNamesLowerSet = new Set(excelFileNames.map(name => name.toLowerCase())); // Excel文件名小写集合
+
+            folderFileNamesRaw.forEach(folderName => {
+                if (!excelFileNamesLowerSet.has(folderName.toLowerCase())) {
+                    extraFiles.push(folderName);
+                }
+            });
+            
+            // 更新统计
+            matchedCount.textContent = matchedFiles.length;
+            missingCount.textContent = missingFiles.length;
+            extraCount.textContent = extraFiles.length;
+            
+            // 清空并显示列表
+            missingFilesList.innerHTML = '';
+            extraFilesList.innerHTML = '';
+            matchedFilesList.innerHTML = ''; // 清空匹配成功列表
+
+            // 显示缺失文件列表
+            missingFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'result-item missing';
+                item.innerHTML = `<i class="fas fa-times-circle"></i><span>${file}</span>`;
+                missingFilesList.appendChild(item);
+            });
+            
+            // 显示额外文件列表
+            extraFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'result-item extra';
+                item.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${file}</span>`;
+                extraFilesList.appendChild(item);
+            });
+            
+            // 显示匹配成功文件列表
+            // 注意：matchedFiles 数组中的 folderName 字段可能与 excelName 存在大小写差异
+            matchedFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'result-item matched';
+                // 这里显示 Excel 中的文件名，因为那是我们期望的名称
+                item.innerHTML = `<i class="fas fa-check-circle"></i><span>${file.excelName}</span>`; 
+                matchedFilesList.appendChild(item);
+            });
+            
+            // 完成提示
+            setTimeout(() => {
+                progressBar.style.width = '100%';
+                alert(`分析完成！\n匹配成功: ${matchedFiles.length}个\nExcel中缺失: ${missingFiles.length}个\n文件夹中额外: ${extraFiles.length}个`);
+            }, 500);
+        }
+        
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化显示状态
+            excelFileInfo.classList.remove('active');
+            folderInfo.classList.remove('active');
+            columnSelector.style.display = 'none';
+
+            // 设置初始文本
+            excelFileName.textContent = '未选择文件';
+            excelFileSize.textContent = '0 Bytes';
+            excelFileModified.textContent = '无';
+            folderPath.textContent = '未选择文件夹';
+            fileCount.textContent = '0 个文件';
+            folderFullPath.textContent = '未选择文件夹';
+
+            // 初始时禁用分析按钮
+            updateAnalyzeButtonState();
+        });
+    </script>
+</body>
+</html>
