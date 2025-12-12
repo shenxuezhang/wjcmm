@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的超级工作台</title>
+    
+    <!-- 1. 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. 引入 React 和 ReactDOM -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0"
+      }
+    }
+    </script>
+    
+    <!-- 3. 引入 Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { background-color: #0f172a; }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+          Search, ExternalLink, Plus, Settings, FileText, Database, 
+          Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
+          X, Save, Command, Globe
+        } from 'lucide-react';
+
+        // ==========================================
+        // 💾 默认内置应用 (ID < 1000 为内置)
+        // ==========================================
+        const DEFAULT_APPS = [
+          {
+            id: 1,
+            name: "批量重命名工具",
+            url: "https://shenxuezhang.github.io/wjcmm/", 
+            description: "高效、快速地对文件进行批量重命名和整理", 
+            category: "工具", 
+            icon: "Settings", 
+            color: "from-green-500 to-teal-400" 
+          },
+          {
+            id: 2,
+            name: "Excel 表格翻译导出",
+            url: "https://shenxuezhang.github.io/wjcmm/exclefyq.html",
+            description: "一键翻译 Excel 表格内容并导出，支持多种语言",
+            category: "工具", 
+            icon: "FileText",
+            color: "from-yellow-500 to-orange-500"
+          },
+          {
+            id: 3,
+            name: "Excel与文件检索",
+            url: "https://shenxuezhang.github.io/wjcmm/excel-name-checker.html",
+            description: "快速检索和检查 Excel 文件名，方便文档管理",
+            category: "工具", 
+            icon: "Database",
+            color: "from-purple-600 to-pink-500"
+          },
+        ];
+
+        // 图标映射表，方便字符串转组件
+        const IconMap = {
+            Settings, FileText, Database, Globe, Cloud, Command
+        };
+
+        // --- 组件: 天气小工具 ---
+        const WeatherWidget = () => {
+            const [weather, setWeather] = useState(null);
+            
+            useEffect(() => {
+                // 默认使用北京坐标，你可以根据需要修改 latitude 和 longitude
+                // 也可以使用 navigator.geolocation 获取当前位置
+                const fetchWeather = async () => {
+                    try {
+                        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074&current_weather=true");
+                        const data = await res.json();
+                        setWeather(data.current_weather);
+                    } catch (e) {
+                        console.error("天气获取失败", e);
+                    }
+                };
+                fetchWeather();
+                // 每30分钟刷新一次
+                const interval = setInterval(fetchWeather, 1800000); 
+                return () => clearInterval(interval);
+            }, []);
+
+            if (!weather) return <span className="text-slate-500 text-xs">加载天气...</span>;
+
+            // 简单的天气代码映射
+            let WeatherIcon = Sun;
+            let text = "晴朗";
+            if (weather.weathercode > 3) { WeatherIcon = Cloud; text = "多云"; }
+            if (weather.weathercode > 50) { WeatherIcon = CloudRain; text = "有雨"; }
+
+            return (
+                <div className="flex items-center space-x-2 text-slate-300 bg-slate-800/40 px-3 py-1 rounded-full border border-slate-700/50 mt-2">
+                    <WeatherIcon className="w-4 h-4 text-yellow-400" />
+                    <span className="text-sm font-medium">{weather.temperature}°C</span>
+                    <span className="text-xs text-slate-500 hidden sm:inline"> | {text}</span>
+                </div>
+            );
+        };
+
+        // --- 组件: 待办事项 (Todo) ---
+        const TodoWidget = () => {
+            const [isOpen, setIsOpen] = useState(false);
+            const [todos, setTodos] = useState(() => {
+                const saved = localStorage.getItem('my_todos');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [input, setInput] = useState("");
+
+            useEffect(() => {
+                localStorage.setItem('my_todos', JSON.stringify(todos));
+            }, [todos]);
+
+            const addTodo = (e) => {
+                e.preventDefault();
+                if (!input.trim()) return;
+                setTodos([...todos, { id: Date.now(), text: input, done: false }]);
+                setInput("");
+            };
+
+            const toggleTodo = (id) => {
+                setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+            };
+
+            const deleteTodo = (id) => {
+                setTodos(todos.filter(t => t.id !== id));
+            };
+
+            return (
+                <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+                    {isOpen && (
+                        <div className="mb-4 w-72 glass-panel rounded-xl p-4 shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-200">
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-bold text-white">📝 待办事项</h4>
+                                <span className="text-xs text-slate-400">{todos.filter(t => !t.done).length} 待办</span>
+                            </div>
+                            
+                            <ul className="max-h-60 overflow-y-auto space-y-2 mb-3 pr-1 custom-scrollbar">
+                                {todos.length === 0 && <li className="text-slate-500 text-sm text-center py-4">暂无待办，享受当下</li>}
+                                {todos.map(todo => (
+                                    <li key={todo.id} className="flex items-center group">
+                                        <button onClick={() => toggleTodo(todo.id)} className="text-slate-400 hover:text-green-400 mr-2 transition-colors">
+                                            {todo.done ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
+                                        </button>
+                                        <span className={`text-sm flex-grow truncate ${todo.done ? 'text-slate-600 line-through' : 'text-slate-200'}`}>
+                                            {todo.text}
+                                        </span>
+                                        <button onClick={() => deleteTodo(todo.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity">
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <form onSubmit={addTodo} className="relative">
+                                <input 
+                                    type="text" 
+                                    value={input}
+                                    onChange={e => setInput(e.target.value)}
+                                    placeholder="添加新任务..."
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                />
+                            </form>
+                        </div>
+                    )}
+                    
+                    <button 
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-all hover:scale-105 active:scale-95"
+                    >
+                        {isOpen ? <X className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
+                    </button>
+                </div>
+            );
+        };
+
+        // --- 组件: 添加应用弹窗 ---
+        const AddAppModal = ({ isOpen, onClose, onAdd }) => {
+            if (!isOpen) return null;
+            const [formData, setFormData] = useState({ name: '', url: '', description: '', category: '自定义' });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onAdd({ ...formData, id: Date.now(), icon: 'Globe', color: 'from-blue-500 to-cyan-500' });
+                setFormData({ name: '', url: '', description: '', category: '自定义' });
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-xl font-bold text-white mb-4 flex items-center">
+                            <Plus className="w-5 h-5 mr-2 text-indigo-400" /> 添加新应用
+                        </h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">应用名称</label>
+                                <input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
+                                    value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">链接地址 (URL)</label>
+                                <input required type="url" placeholder="https://" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
+                                    value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">描述</label>
+                                <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
+                                    value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                            </div>
+                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-lg font-medium transition-colors mt-2">
+                                确认添加
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 主程序 ---
+        function AppLauncher() {
+            // State
+            const [customApps, setCustomApps] = useState(() => {
+                const saved = localStorage.getItem('my_custom_apps');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [pinnedIds, setPinnedIds] = useState(() => {
+                const saved = localStorage.getItem('my_pinned_apps');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [searchTerm, setSearchTerm] = useState("");
+            const [selectedCategory, setSelectedCategory] = useState("全部");
+            const [time, setTime] = useState(new Date());
+            const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+            
+            const searchInputRef = useRef(null);
+
+            // 合并所有应用
+            const allApps = [...DEFAULT_APPS, ...customApps];
+
+            // 派生数据：分类
+            const categories = ["全部", ...new Set(allApps.map(app => app.category))];
+
+            // Effect: 存储持久化
+            useEffect(() => { localStorage.setItem('my_custom_apps', JSON.stringify(customApps)); }, [customApps]);
+            useEffect(() => { localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds)); }, [pinnedIds]);
+
+            // Effect: 时钟
+            useEffect(() => {
+                const timer = setInterval(() => setTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
+
+            // Effect: 键盘快捷键
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    // 按下 "/" 聚焦搜索框
+                    if (e.key === '/' && document.activeElement !== searchInputRef.current) {
+                        e.preventDefault();
+                        searchInputRef.current?.focus();
+                    }
+                    // 按下 "Escape" 清空搜索 或 关闭弹窗
+                    if (e.key === 'Escape') {
+                        setSearchTerm("");
+                        setIsAddModalOpen(false);
+                        searchInputRef.current?.blur();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, []);
+
+            // 功能函数
+            const togglePin = (e, id) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (pinnedIds.includes(id)) {
+                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
+                } else {
+                    setPinnedIds([...pinnedIds, id]);
+                }
+            };
+
+            const deleteApp = (e, id) => {
+                e.preventDefault();
+                if(confirm("确定要删除这个应用吗？")) {
+                    setCustomApps(customApps.filter(app => app.id !== id));
+                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
+                }
+            };
+
+            const handleAddApp = (newApp) => {
+                setCustomApps([...customApps, newApp]);
+            };
+
+            // 过滤与排序逻辑 (置顶优先)
+            const filteredApps = allApps
+                .filter(app => {
+                    const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                          app.description.toLowerCase().includes(searchTerm.toLowerCase());
+                    const matchesCategory = selectedCategory === "全部" || app.category === selectedCategory;
+                    return matchesSearch && matchesCategory;
+                })
+                .sort((a, b) => {
+                    const aPinned = pinnedIds.includes(a.id);
+                    const bPinned = pinnedIds.includes(b.id);
+                    if (aPinned && !bPinned) return -1;
+                    if (!aPinned && bPinned) return 1;
+                    return 0;
+                });
+
+            // 获取问候语
+            const getGreeting = () => {
+                const hour = time.getHours();
+                if (hour < 6) return "夜深了";
+                if (hour < 11) return "早上好";
+                if (hour < 14) return "中午好";
+                if (hour < 18) return "下午好";
+                return "晚上好";
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-slate-100 font-sans overflow-x-hidden relative selection:bg-indigo-500/30 selection:text-indigo-200">
+                    
+                    {/* 背景动画 */}
+                    <div className="fixed inset-0 overflow-hidden -z-10 pointer-events-none">
+                        <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-indigo-900/20 rounded-full blur-[120px] animate-pulse"></div>
+                        <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[120px]" style={{animationDelay: '1s'}}></div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-32">
+                        
+                        {/* 头部 */}
+                        <header className="flex flex-col items-center justify-center mb-10 space-y-6">
+                            <div className="flex flex-col items-center">
+                                <h1 className="text-6xl md:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 tracking-tighter drop-shadow-2xl font-mono">
+                                    {time.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}
+                                </h1>
+                                <div className="flex items-center gap-3 mt-2">
+                                    <span className="text-slate-400 text-lg">
+                                        {time.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                    </span>
+                                    <span className="w-1 h-1 bg-slate-500 rounded-full"></span>
+                                    <span className="text-indigo-400 font-medium">{getGreeting()}</span>
+                                </div>
+                                <WeatherWidget />
+                            </div>
+
+                            {/* 搜索框 */}
+                            <div className="relative w-full max-w-xl group z-10">
+                                <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
+                                <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 p-2 shadow-2xl backdrop-blur-sm">
+                                    <Search className="w-5 h-5 text-slate-500 ml-3" />
+                                    <input
+                                        ref={searchInputRef}
+                                        type="text"
+                                        placeholder="搜索应用... (按 '/' 聚焦)"
+                                        className="w-full bg-transparent border-none focus:ring-0 text-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                    {searchTerm ? (
+                                        <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white">
+                                            <span className="text-xs border border-slate-600 rounded px-1.5 py-0.5">ESC</span>
+                                        </button>
+                                    ) : (
+                                        <div className="px-3 text-slate-600 hidden sm:block">
+                                            <Command className="w-4 h-4 inline mr-1 opacity-50" />
+                                            <span className="text-xs">/</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 分类 Filter */}
+                            <div className="flex flex-wrap justify-center gap-2">
+                                {categories.map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setSelectedCategory(cat)}
+                                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                                            selectedCategory === cat
+                                                ? "bg-white text-slate-900 shadow-lg shadow-white/10"
+                                                : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white border border-transparent hover:border-slate-600"
+                                        }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                        </header>
+
+                        {/* 应用列表 Grid */}
+                        <main className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                            {filteredApps.map((app) => {
+                                // 动态获取图标组件，如果没有匹配则使用 Globe
+                                const IconComponent = IconMap[app.icon] || Globe;
+                                const isPinned = pinnedIds.includes(app.id);
+
+                                return (
+                                    <div key={app.id} className="group relative block h-full">
+                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-0 group-hover:opacity-75 transition duration-500 blur-sm"></div>
+                                        
+                                        <a href={app.url} target="_blank" rel="noopener noreferrer" 
+                                           className="relative h-full bg-slate-800/60 backdrop-blur-md border border-slate-700/50 rounded-xl p-5 flex flex-col items-start transition-all duration-300 group-hover:-translate-y-1 hover:bg-slate-800/80">
+                                            
+                                            {/* 卡片顶部栏 */}
+                                            <div className="flex justify-between items-start w-full mb-3">
+                                                <div className={`p-2.5 rounded-lg bg-gradient-to-br ${app.color} shadow-lg text-white`}>
+                                                    <IconComponent className="w-5 h-5" />
+                                                </div>
+                                                <div className="flex space-x-1">
+                                                    {/* 置顶按钮 */}
+                                                    <button 
+                                                        onClick={(e) => togglePin(e, app.id)}
+                                                        className={`p-1.5 rounded-md transition-colors ${isPinned ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700'}`}
+                                                        title={isPinned ? "取消置顶" : "置顶"}
+                                                    >
+                                                        <Pin className={`w-4 h-4 ${isPinned ? 'fill-current' : ''}`} />
+                                                    </button>
+                                                    {/* 删除按钮 (仅限自定义应用) */}
+                                                    {app.id > 1000 && (
+                                                        <button 
+                                                            onClick={(e) => deleteApp(e, app.id)}
+                                                            className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                                                            title="删除"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <h3 className="text-lg font-bold text-white mb-1 group-hover:text-indigo-300 transition-colors">
+                                                {app.name}
+                                            </h3>
+                                            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                                                {app.description}
+                                            </p>
+                                        </a>
+                                    </div>
+                                );
+                            })}
+
+                            {/* 网络搜索 Fallback (当搜索结果为空时显示) */}
+                            {filteredApps.length === 0 && searchTerm.trim() !== "" && (
+                                <div className="col-span-full py-10 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
+                                    <div className="p-4 bg-slate-800/50 rounded-full mb-4">
+                                        <Search className="w-8 h-8 text-slate-500" />
+                                    </div>
+                                    <h3 className="text-xl font-medium text-white mb-2">未找到 "{searchTerm}"</h3>
+                                    <p className="text-slate-400 mb-6 max-w-md">我的本地数据库里没有这个应用，尝试去广阔的互联网看看？</p>
+                                    
+                                    <div className="flex gap-4">
+                                        <a href={`https://www.baidu.com/s?wd=${encodeURIComponent(searchTerm)}`} target="_blank" className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all hover:scale-105 shadow-lg shadow-blue-900/20">
+                                            百度搜索
+                                        </a>
+                                        <a href={`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`} target="_blank" className="flex items-center px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all hover:scale-105 border border-slate-600">
+                                            Google 搜索
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 添加应用按钮 */}
+                            <button 
+                                onClick={() => setIsAddModalOpen(true)}
+                                className="group relative block h-full min-h-[160px] border-2 border-dashed border-slate-700/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer"
+                            >
+                                <div className="p-3 rounded-full bg-slate-800 mb-3 text-slate-400 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-300">
+                                    <Plus className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-sm font-medium text-slate-300 group-hover:text-white">添加自定义应用</h3>
+                            </button>
+                        </main>
+
+                        <footer className="mt-20 text-center text-slate-600 text-sm">
+                            <p>© {new Date().getFullYear()} 个人工作台 </p>
+                        </footer>
+                    </div>
+
+                    {/* 悬浮组件 */}
+                    <TodoWidget />
+                    <AddAppModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddApp} />
+                    
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<AppLauncher />);
+    </script>
+</body>
+</html>
