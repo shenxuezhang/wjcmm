@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "name": "批量重命名工具",
+    "url": "https://shenxuezhang.github.io/wjcmm/plwjcmm.html",
+    "description": "高效、快速地对文件进行批量重命名和整理",
+    "category": "工具",
+    "icon": "Settings",
+    "color": "from-green-500 to-teal-400"
+  },
+  {
+    "id": 2,
+    "name": "Excel 表格翻译导出",
+    "url": "https://shenxuezhang.github.io/wjcmm/exclefyq.html",
+    "description": "一键翻译 Excel 表格内容并导出",
+    "category": "工具",
+    "icon": "FileText",
+    "color": "from-yellow-500 to-orange-500"
+  },
+  {
+    "id": 3,
+    "name": "Excel与文件检索",
+    "url": "https://shenxuezhang.github.io/wjcmm/excel-name-checker.html",
+    "description": "快速检索和检查 Excel 文件名",
+    "category": "工具",
+    "icon": "Database",
+    "color": "from-purple-600 to-pink-500"
+  }
+]
