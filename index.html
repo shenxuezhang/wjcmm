@@ -56,7 +56,7 @@
         import { 
           Search, Plus, Settings, FileText, Database, 
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
-          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key
+          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key, Pencil
         } from 'lucide-react';
 
         // ==========================================
@@ -241,7 +241,7 @@
             );
         };
 
-        // --- 组件: GitHub Token 设置弹窗 (新增) ---
+        // --- 组件: GitHub Token 设置弹窗 ---
         const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
             if (!isOpen) return null;
             const [tokenInput, setTokenInput] = useState(currentToken || "");
@@ -302,17 +302,37 @@
             );
         };
 
-        // --- 组件: 添加应用弹窗 ---
-        const AddAppModal = ({ isOpen, onClose, onAdd }) => {
+        // --- 组件: 应用表单弹窗 (添加/编辑通用) ---
+        const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
             if (!isOpen) return null;
-            const [formData, setFormData] = useState({ name: '', url: '', description: '', category: '自定义' });
+            
+            const [formData, setFormData] = useState({ 
+                name: '', url: '', description: '', category: '自定义' 
+            });
+
+            // 当 appToEdit 变化或打开弹窗时，设置初始数据
+            useEffect(() => {
+                if (isOpen) {
+                    if (appToEdit) {
+                        setFormData({
+                            name: appToEdit.name,
+                            url: appToEdit.url,
+                            description: appToEdit.description,
+                            category: appToEdit.category
+                        });
+                    } else {
+                        setFormData({ name: '', url: '', description: '', category: '自定义' });
+                    }
+                }
+            }, [isOpen, appToEdit]);
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                onAdd({ ...formData, id: Date.now(), icon: 'Globe', color: 'from-blue-500 to-cyan-500' });
-                setFormData({ name: '', url: '', description: '', category: '自定义' });
+                onSave(formData);
                 onClose();
             };
+
+            const isEdit = !!appToEdit;
 
             return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -321,7 +341,8 @@
                             <X className="w-5 h-5" />
                         </button>
                         <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-                            <Plus className="w-5 h-5 mr-2 text-indigo-400" /> 添加新应用
+                            {isEdit ? <Pencil className="w-5 h-5 mr-2 text-indigo-400" /> : <Plus className="w-5 h-5 mr-2 text-indigo-400" />}
+                            {isEdit ? '编辑应用' : '添加新应用'}
                         </h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
@@ -340,7 +361,7 @@
                                     value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
                             </div>
                             <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-lg font-medium transition-colors mt-2">
-                                确认添加
+                                {isEdit ? '保存修改' : '确认添加'}
                             </button>
                         </form>
                     </div>
@@ -359,7 +380,10 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [selectedCategory, setSelectedCategory] = useState("全部");
             const [time, setTime] = useState(new Date());
-            const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+            
+            // App Edit/Add State
+            const [isAppModalOpen, setIsAppModalOpen] = useState(false);
+            const [editingApp, setEditingApp] = useState(null); // null 表示添加，有值表示编辑
             
             // Cloud Sync & Token State
             const [isSyncEnabled, setIsSyncEnabled] = useState(() => {
@@ -401,7 +425,7 @@
                     setCustomApps([]);
                     setSyncStatus("");
                 }
-            }, [isSyncEnabled]); // 注意：这里不依赖 ghToken，防止输入Token时反复触发，由用户手动或开关触发
+            }, [isSyncEnabled]); 
 
             // Effect: 时钟
             useEffect(() => {
@@ -418,7 +442,7 @@
                     }
                     if (e.key === 'Escape') {
                         setSearchTerm("");
-                        setIsAddModalOpen(false);
+                        setIsAppModalOpen(false);
                         setIsAuthModalOpen(false);
                         setIsSettingsModalOpen(false);
                         searchInputRef.current?.blur();
@@ -436,7 +460,6 @@
                 setGhToken(newToken);
                 localStorage.setItem('gh_token', newToken); // 保存到本地
                 if (newToken && isSyncEnabled) {
-                    // 如果保存了Token且开启了同步，尝试拉取一次
                     setTimeout(() => fetchFromGitHub(newToken), 100);
                 }
             };
@@ -572,8 +595,31 @@
                 }
             };
 
-            const handleAddApp = (newApp) => {
-                setCustomApps([...customApps, newApp]);
+            const openEditApp = (e, app) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditingApp(app);
+                setIsAppModalOpen(true);
+            };
+
+            const handleSaveApp = (formData) => {
+                if (editingApp) {
+                    // 编辑模式：更新现有应用
+                    setCustomApps(customApps.map(app => 
+                        app.id === editingApp.id 
+                            ? { ...app, ...formData } 
+                            : app
+                    ));
+                } else {
+                    // 添加模式：创建新应用
+                    const newApp = { 
+                        ...formData, 
+                        id: Date.now(), 
+                        icon: 'Globe', 
+                        color: 'from-blue-500 to-cyan-500' 
+                    };
+                    setCustomApps([...customApps, newApp]);
+                }
             };
 
             // 过滤与排序逻辑
@@ -620,7 +666,7 @@
                             </span>
                         )}
 
-                        {/* 设置按钮 (新增) */}
+                        {/* 设置按钮 */}
                         <button 
                             onClick={() => setIsSettingsModalOpen(true)}
                             className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${!ghToken ? 'text-yellow-400 animate-pulse' : 'text-slate-400'}`}
@@ -750,6 +796,14 @@
                                                     <IconComponent className="w-5 h-5" />
                                                 </div>
                                                 <div className="flex space-x-1">
+                                                    {/* 编辑按钮 (新增) */}
+                                                    <button 
+                                                        onClick={(e) => openEditApp(e, app)}
+                                                        className="p-1.5 rounded-md text-slate-600 hover:text-white hover:bg-slate-700 transition-colors"
+                                                        title="编辑"
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
+                                                    </button>
                                                     <button 
                                                         onClick={(e) => togglePin(e, app.id)}
                                                         className={`p-1.5 rounded-md transition-colors ${isPinned ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700'}`}
@@ -814,7 +868,7 @@
 
                             {/* 添加应用按钮 */}
                             <button 
-                                onClick={() => setIsAddModalOpen(true)}
+                                onClick={() => { setEditingApp(null); setIsAppModalOpen(true); }}
                                 className="group relative block h-full min-h-[160px] border-2 border-dashed border-slate-700/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer"
                             >
                                 <div className="p-3 rounded-full bg-slate-800 mb-3 text-slate-400 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-300">
@@ -831,7 +885,13 @@
 
                     {/* 悬浮组件 */}
                     <TodoWidget />
-                    <AddAppModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddApp} />
+                    {/* 复用 Modal，传入 editingApp 控制是否回显数据 */}
+                    <AppModal 
+                        isOpen={isAppModalOpen} 
+                        onClose={() => setIsAppModalOpen(false)} 
+                        onSave={handleSaveApp} 
+                        appToEdit={editingApp}
+                    />
                     
                     {/* 密码验证弹窗 */}
                     <AuthModal 
