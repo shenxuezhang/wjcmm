@@ -1,12 +1,24 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的应用工作台 - 专业版</title>
+    <title>我的应用工作台 - 自制版</title>
     
     <!-- 1. 基础库引入 -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        bg: { light: '#f8fafc', dark: '#0f172a' },
+                    }
+                }
+            }
+        }
+    </script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
     {
@@ -20,30 +32,24 @@
 
     <!-- 2. 全局样式 -->
     <style>
-        body { background-color: #0f172a; }
-        /* 滚动条优化 */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        body { transition: background-color 0.3s, color 0.3s; }
         
-        /* 玻璃拟态组件 */
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        /* 搜索引擎下拉框修正 */
-        .engine-select { appearance: none; background-image: none; }
+        /* 滚动条优化 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
         /* 动画工具类 */
-        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* 自定义类 */
+        .glass-sidebar { backdrop-filter: blur(10px); }
     </style>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen overflow-hidden selection:bg-indigo-500/30">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -51,26 +57,16 @@
         import { createRoot } from 'react-dom/client';
         import { 
           Search, Plus, Settings, FileText, Database, 
-          Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
-          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key, Pencil, ChevronDown
+          Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, Moon,
+          X, Command, Globe, RefreshCw, Upload, Check, Power, Lock, Key, Pencil, ChevronDown, 
+          Menu, LayoutGrid, ListFilter, LogOut
         } from 'lucide-react';
 
         // =========================================================================
-        // 1. 全局配置区域 (User Configuration)
-        // 建议非开发人员仅修改此区域
+        // 1. 全局配置区域
         // =========================================================================
-        
-        // 1.1 GitHub 仓库配置
-        const GH_CONFIG = {
-            owner: "shenxuezhang",
-            repo: "wjcmm",
-            path: "db.json"
-        };
-
-        // 1.2 管理员默认密码 (建议改用 Token 验证，此处仅作上传前的二次确认)
+        const GH_CONFIG = { owner: "shenxuezhang", repo: "wjcmm", path: "db.json" };
         const ADMIN_PASSWORD = "8888";
-
-        // 1.3 搜索引擎列表
         const SEARCH_ENGINES = {
             baidu:    { name: "百度",     url: "https://www.baidu.com/s?wd=",               placeholder: "百度一下..." },
             google:   { name: "Google",   url: "https://www.google.com/search?q=",          placeholder: "Google 搜索..." },
@@ -78,15 +74,10 @@
             bilibili: { name: "Bilibili", url: "https://search.bilibili.com/all?keyword=",  placeholder: "搜索 B 站视频..." },
             github:   { name: "GitHub",   url: "https://github.com/search?q=",              placeholder: "搜索代码仓库..." }
         };
-
-        // 1.4 内置图标映射 (用于恢复特定应用的旧图标)
-        // 如果您想让某个应用使用内置图标，请确保 IconMap 中有该图标，并在应用数据中设置 icon 字段
-        const IconMap = {
-            Settings, FileText, Database, Globe, Cloud, Command
-        };
+        const IconMap = { Settings, FileText, Database, Globe, Cloud, Command };
 
         // =========================================================================
-        // 2. 工具函数 (Utilities)
+        // 2. 工具与核心服务
         // =========================================================================
         
         const Utils = {
@@ -94,259 +85,33 @@
             fromBase64: (str) => decodeURIComponent(escape(window.atob(str))),
             getGreeting: (date) => {
                 const hour = date.getHours();
-                if (hour < 6) return "夜深了";
-                if (hour < 11) return "早上好";
-                if (hour < 14) return "中午好";
-                if (hour < 18) return "下午好";
-                return "晚上好";
+                if (hour < 6) return "夜深了"; if (hour < 11) return "早上好";
+                if (hour < 14) return "中午好"; if (hour < 18) return "下午好"; return "晚上好";
             }
         };
 
-        // =========================================================================
-        // 3. UI 组件库 (Components)
-        // =========================================================================
-
-        /**
-         * 应用图标组件
-         * 逻辑：优先显示配置的内置图标(iconName)，否则尝试获取 URL 的 Favicon
-         */
-        const AppIcon = ({ url, fallbackColor, iconName }) => {
-            const [imageError, setImageError] = useState(false);
-            
-            // 策略 A: 优先使用内置图标 (如果 iconName 存在且不是 Globe)
-            if (iconName && iconName !== 'Globe' && IconMap[iconName]) {
-                const IconComponent = IconMap[iconName];
-                return (
-                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-lg text-white`}>
-                        <IconComponent className="w-6 h-6" />
-                    </div>
-                );
-            }
-
-            // 策略 B: 使用 Google Favicon API
-            const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
-
-            if (imageError || !url) {
-                // 策略 C: 兜底显示默认图标
-                return (
-                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-lg text-white`}>
-                        <Globe className="w-6 h-6" />
-                    </div>
-                );
-            }
-
-            return (
-                <img 
-                    src={faviconUrl} 
-                    alt="icon"
-                    className="w-10 h-10 rounded-lg shadow-md bg-slate-800 object-cover"
-                    onError={() => setImageError(true)}
-                />
-            );
-        };
-
-        // 天气组件
-        const WeatherWidget = () => {
-            const [weather, setWeather] = useState(null);
-            
-            useEffect(() => {
-                const fetchWeather = async () => {
-                    try {
-                        // 深圳坐标
-                        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current_weather=true");
-                        const data = await res.json();
-                        setWeather(data.current_weather);
-                    } catch (e) { console.error("天气API错误", e); }
-                };
-                fetchWeather();
-                const interval = setInterval(fetchWeather, 30 * 60 * 1000); // 30分钟刷新
-                return () => clearInterval(interval);
-            }, []);
-
-            if (!weather) return <span className="text-slate-500 text-xs animate-pulse">加载天气...</span>;
-
-            let WeatherIcon = Sun;
-            let text = "晴朗";
-            if (weather.weathercode > 3) { WeatherIcon = Cloud; text = "多云"; }
-            if (weather.weathercode > 50) { WeatherIcon = CloudRain; text = "有雨"; }
-
-            return (
-                <div className="flex items-center space-x-2 text-slate-300 bg-slate-800/40 px-3 py-1 rounded-full border border-slate-700/50 mt-2 hover:bg-slate-800/60 transition-colors cursor-default">
-                    <WeatherIcon className="w-4 h-4 text-yellow-400" />
-                    <span className="text-sm font-medium">{weather.temperature}°C</span>
-                    <span className="text-xs text-slate-500 hidden sm:inline"> | {text} (深圳)</span>
-                </div>
-            );
-        };
-
-        // 待办事项组件
-        const TodoWidget = () => {
-            const [isOpen, setIsOpen] = useState(false);
-            const [todos, setTodos] = useState(() => JSON.parse(localStorage.getItem('my_todos') || '[]'));
-            const [input, setInput] = useState("");
-
-            useEffect(() => localStorage.setItem('my_todos', JSON.stringify(todos)), [todos]);
-
-            const handleAdd = (e) => {
-                e.preventDefault();
-                if (!input.trim()) return;
-                setTodos([...todos, { id: Date.now(), text: input, done: false }]);
-                setInput("");
-            };
-
-            return (
-                <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-                    {isOpen && (
-                        <div className="mb-4 w-72 glass-panel rounded-xl p-4 shadow-2xl animate-fade-in">
-                            <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-bold text-white">📝 待办清单</h4>
-                                <span className="text-xs text-slate-400">{todos.filter(t => !t.done).length} 待办</span>
-                            </div>
-                            <ul className="max-h-60 overflow-y-auto space-y-2 mb-3 pr-1 custom-scrollbar">
-                                {todos.length === 0 && <li className="text-slate-500 text-sm text-center py-4">暂无待办，享受当下</li>}
-                                {todos.map(t => (
-                                    <li key={t.id} className="flex items-center group">
-                                        <button onClick={() => setTodos(todos.map(todo => todo.id === t.id ? {...todo, done: !todo.done} : todo))} className="mr-2">
-                                            {t.done ? <CheckCircle className="w-4 h-4 text-green-500"/> : <Circle className="w-4 h-4 text-slate-400 hover:text-green-400"/>}
-                                        </button>
-                                        <span className={`text-sm flex-grow truncate ${t.done ? 'text-slate-600 line-through' : 'text-slate-200'}`}>{t.text}</span>
-                                        <button onClick={() => setTodos(todos.filter(todo => todo.id !== t.id))} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
-                                    </li>
-                                ))}
-                            </ul>
-                            <form onSubmit={handleAdd}><input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="添加任务..." className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"/></form>
-                        </div>
-                    )}
-                    <button onClick={() => setIsOpen(!isOpen)} className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95">
-                        {isOpen ? <X className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
-                    </button>
-                </div>
-            );
-        };
-
-        // =========================================================================
-        // 4. 弹窗组件集合 (Modals)
-        // =========================================================================
-
-        const ModalWrapper = ({ isOpen, onClose, title, icon: Icon, children }) => {
-            if (!isOpen) return null;
-            return (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
-                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-5 h-5"/></button>
-                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
-                            {Icon && <Icon className="w-5 h-5 mr-2 text-indigo-400" />} {title}
-                        </h2>
-                        {children}
-                    </div>
-                </div>
-            );
-        };
-
-        const AuthModal = ({ isOpen, onClose, onSuccess }) => {
-            const [password, setPassword] = useState("");
-            const [error, setError] = useState(false);
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                if (password === ADMIN_PASSWORD) { onSuccess(); onClose(); setPassword(""); setError(false); } 
-                else { setError(true); setPassword(""); }
-            };
-            return (
-                <ModalWrapper isOpen={isOpen} onClose={onClose} title="管理员验证" icon={Lock}>
-                    <p className="text-sm text-slate-400 mb-4">操作需管理员权限。</p>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <input autoFocus type="password" placeholder="请输入密码" className={`w-full bg-slate-900 border ${error ? 'border-red-500' : 'border-slate-600'} rounded-lg px-3 py-2 text-white outline-none`} value={password} onChange={e => {setPassword(e.target.value); setError(false);}} />
-                        {error && <p className="text-red-400 text-xs">密码错误</p>}
-                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium">确认</button>
-                    </form>
-                </ModalWrapper>
-            );
-        };
-
-        const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
-            const [token, setToken] = useState(currentToken);
-            const [show, setShow] = useState(false);
-            useEffect(() => setToken(currentToken || ""), [currentToken]);
-            return (
-                <ModalWrapper isOpen={isOpen} onClose={onClose} title="系统设置" icon={Settings}>
-                    <form onSubmit={(e) => { e.preventDefault(); onSave(token.trim()); onClose(); }}>
-                        <label className="block text-sm font-medium text-slate-300 mb-1">GitHub Token</label>
-                        <div className="relative mb-2">
-                            <input type={show ? "text" : "password"} placeholder="ghp_..." className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-3 pr-10 py-2 text-white outline-none focus:border-indigo-500" value={token} onChange={e => setToken(e.target.value)} />
-                            <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-2.5 text-slate-500 hover:text-white text-xs">{show ? '隐藏' : '显示'}</button>
-                        </div>
-                        <p className="text-xs text-slate-500 mb-4">Token 仅保存在本地浏览器缓存中。</p>
-                        <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-medium flex justify-center items-center"><Check className="w-4 h-4 mr-1"/> 保存配置</button>
-                    </form>
-                </ModalWrapper>
-            );
-        };
-
-        const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
-            const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义' });
-            useEffect(() => {
-                if (isOpen) setForm(appToEdit ? { ...appToEdit } : { name: '', url: '', description: '', category: '自定义' });
-            }, [isOpen, appToEdit]);
-            
-            return (
-                <ModalWrapper isOpen={isOpen} onClose={onClose} title={appToEdit ? "编辑应用" : "添加新应用"} icon={appToEdit ? Pencil : Plus}>
-                    <form onSubmit={(e) => { e.preventDefault(); onSave(form); onClose(); }} className="space-y-4">
-                        <div><label className="text-xs text-slate-400">名称</label><input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
-                        <div>
-                            <label className="text-xs text-slate-400">URL</label>
-                            <input required type="url" placeholder="https://" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.url} onChange={e => setForm({...form, url: e.target.value})} />
-                            <p className="text-[10px] text-slate-500 mt-1">* 自动获取图标。旧应用如需特定图标，请确保数据源包含 icon 字段。</p>
-                        </div>
-                        <div><label className="text-xs text-slate-400">描述</label><input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} /></div>
-                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium">{appToEdit ? '保存修改' : '确认添加'}</button>
-                    </form>
-                </ModalWrapper>
-            );
-        };
-
-        // =========================================================================
-        // 5. 核心逻辑业务 (GitHub API Service)
-        // =========================================================================
-        
         const GitHubService = {
             getApiUrl: () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`,
-            
             async fetchApps(token) {
                 if (!token) throw new Error("请配置Token");
-                const res = await fetch(this.getApiUrl(), {
-                    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
-                });
+                const res = await fetch(this.getApiUrl(), { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' } });
                 if (res.status === 401) throw new Error("Token无效/过期");
-                if (res.status === 404) return []; // 文件不存在，返回空数组
+                if (res.status === 404) return [];
                 if (!res.ok) throw new Error(`API Error ${res.status}`);
-                
                 const data = await res.json();
                 return JSON.parse(Utils.fromBase64(data.content));
             },
-
             async saveApps(token, apps) {
                 if (!token) throw new Error("请配置Token");
                 const url = this.getApiUrl();
-                
-                // 1. 获取当前 SHA (用于覆盖)
                 let sha = null;
-                try {
-                    const getRes = await fetch(url, { headers: { 'Authorization': `token ${token}` } });
-                    if (getRes.ok) sha = (await getRes.json()).sha;
-                } catch (e) {}
-
-                // 2. 推送更新
+                try { const getRes = await fetch(url, { headers: { 'Authorization': `token ${token}` } }); if (getRes.ok) sha = (await getRes.json()).sha; } catch (e) {}
                 const content = Utils.toBase64(JSON.stringify(apps, null, 2));
                 const res = await fetch(url, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: `Update via Dashboard - ${new Date().toLocaleString()}`,
-                        content: content,
-                        ...(sha && { sha })
-                    })
+                    body: JSON.stringify({ message: `Update via Dashboard - ${new Date().toLocaleString()}`, content, ...(sha && { sha }) })
                 });
-
                 if (res.status === 401) throw new Error("Token无效");
                 if (!res.ok) throw new Error("上传失败");
                 return true;
@@ -354,38 +119,227 @@
         };
 
         // =========================================================================
-        // 6. 主应用程序 (Main App)
+        // 3. 基础 UI 组件 (必须在 AppLauncher 之前定义)
         // =========================================================================
-        
+
+        const AppIcon = ({ url, fallbackColor, iconName }) => {
+            const [error, setError] = useState(false);
+            if (iconName && iconName !== 'Globe' && IconMap[iconName]) {
+                const IconComponent = IconMap[iconName];
+                return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><IconComponent className="w-6 h-6" /></div>;
+            }
+            const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
+            if (error || !url) return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><Globe className="w-6 h-6" /></div>;
+            return <img src={faviconUrl} alt="icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
+        };
+
+        const WeatherWidget = () => {
+            const [weather, setWeather] = useState(null);
+            useEffect(() => {
+                const fetchWeather = async () => {
+                    try { const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current_weather=true"); const data = await res.json(); setWeather(data.current_weather); } catch (e) {}
+                };
+                fetchWeather();
+            }, []);
+            if (!weather) return null;
+            let WeatherIcon = Sun; let text = "晴";
+            if (weather.weathercode > 3) { WeatherIcon = Cloud; text = "多云"; }
+            if (weather.weathercode > 50) { WeatherIcon = CloudRain; text = "雨"; }
+            return (
+                <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-300 bg-white/50 dark:bg-slate-800/40 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700/50 text-xs font-medium backdrop-blur-sm">
+                    <WeatherIcon className="w-3 h-3 text-yellow-500 dark:text-yellow-400" />
+                    <span>{weather.temperature}°C {text}</span>
+                </div>
+            );
+        };
+
+        const TodoWidget = () => {
+            const [isOpen, setIsOpen] = useState(false);
+            const [todos, setTodos] = useState(() => JSON.parse(localStorage.getItem('my_todos') || '[]'));
+            const [input, setInput] = useState("");
+            useEffect(() => localStorage.setItem('my_todos', JSON.stringify(todos)), [todos]);
+            const handleAdd = (e) => { e.preventDefault(); if(!input.trim())return; setTodos([...todos,{id:Date.now(),text:input,done:false}]); setInput(""); };
+
+            return (
+                <div className="flex flex-col items-end">
+                    {isOpen && (
+                        <div className="mb-4 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-2xl animate-fade-in text-slate-900 dark:text-white">
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-bold text-sm">待办清单</h4>
+                                <span className="text-xs text-slate-500">{todos.filter(t => !t.done).length} 待办</span>
+                            </div>
+                            <ul className="max-h-60 overflow-y-auto space-y-2 mb-3 pr-1 custom-scrollbar">
+                                {todos.length===0 && <li className="text-center text-xs text-slate-400 py-4">无待办任务</li>}
+                                {todos.map(t => (
+                                    <li key={t.id} className="flex items-center group">
+                                        <button onClick={()=>setTodos(todos.map(todo=>todo.id===t.id?{...todo,done:!todo.done}:todo))} className="mr-2 text-slate-400 hover:text-green-500">
+                                            {t.done?<CheckCircle className="w-4 h-4 text-green-500"/>:<Circle className="w-4 h-4"/>}
+                                        </button>
+                                        <span className={`text-sm flex-grow truncate ${t.done?'text-slate-400 line-through':'text-slate-700 dark:text-slate-200'}`}>{t.text}</span>
+                                        <button onClick={()=>setTodos(todos.filter(todo=>todo.id!==t.id))} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"><Trash2 className="w-3 h-3"/></button>
+                                    </li>
+                                ))}
+                            </ul>
+                            <form onSubmit={handleAdd}><input type="text" value={input} onChange={e=>setInput(e.target.value)} placeholder="新任务..." className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:text-white"/></form>
+                        </div>
+                    )}
+                    <button onClick={()=>setIsOpen(!isOpen)} className="p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-transform hover:scale-105 active:scale-95">
+                        {isOpen ? <X className="w-6 h-6"/> : <FileText className="w-6 h-6"/>}
+                    </button>
+                </div>
+            );
+        };
+
+        const ModalWrapper = ({ isOpen, onClose, title, icon: Icon, children }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl w-full max-w-md p-6 shadow-2xl relative text-slate-900 dark:text-slate-100">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"><X className="w-5 h-5"/></button>
+                        <h2 className="text-lg font-bold mb-4 flex items-center">{Icon && <Icon className="w-5 h-5 mr-2 text-indigo-500 dark:text-indigo-400" />} {title}</h2>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        const AuthModal = ({ isOpen, onClose, onSuccess }) => {
+            const [password, setPassword] = useState(""); const [error, setError] = useState(false);
+            return (
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title="管理员验证" icon={Lock}>
+                    <form onSubmit={(e) => { e.preventDefault(); if(password===ADMIN_PASSWORD){onSuccess();onClose();setPassword("");setError(false);}else{setError(true);setPassword("");} }} className="space-y-4">
+                        <input autoFocus type="password" placeholder="密码" className={`w-full bg-slate-50 dark:bg-slate-900 border ${error?'border-red-500':'border-slate-300 dark:border-slate-600'} rounded-lg px-3 py-2 text-sm outline-none dark:text-white`} value={password} onChange={e=>{setPassword(e.target.value);setError(false);}} />
+                        <button type="submit" className="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium">确认</button>
+                    </form>
+                </ModalWrapper>
+            );
+        };
+
+        const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
+            const [token, setToken] = useState(currentToken); const [show, setShow] = useState(false);
+            useEffect(() => setToken(currentToken || ""), [currentToken]);
+            return (
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title="系统设置" icon={Settings}>
+                    <form onSubmit={(e) => { e.preventDefault(); onSave(token.trim()); onClose(); }}>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">GitHub Token</label>
+                        <div className="relative mb-4">
+                            <input type={show?"text":"password"} placeholder="ghp_..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg pl-3 pr-10 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white" value={token} onChange={e=>setToken(e.target.value)} />
+                            <button type="button" onClick={()=>setShow(!show)} className="absolute right-3 top-2.5 text-xs text-slate-500">{show?'隐藏':'显示'}</button>
+                        </div>
+                        <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium flex justify-center items-center"><Check className="w-4 h-4 mr-1"/> 保存配置</button>
+                    </form>
+                </ModalWrapper>
+            );
+        };
+
+        const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
+            const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义' });
+            useEffect(() => { if(isOpen) setForm(appToEdit ? {...appToEdit} : { name: '', url: '', description: '', category: '自定义' }); }, [isOpen, appToEdit]);
+            return (
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title={appToEdit?"编辑应用":"添加应用"} icon={appToEdit?Pencil:Plus}>
+                    <form onSubmit={(e)=>{e.preventDefault();onSave(form);onClose();}} className="space-y-3">
+                        <div><label className="text-xs text-slate-500 dark:text-slate-400">名称</label><input required type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
+                        <div><label className="text-xs text-slate-500 dark:text-slate-400">URL</label><input required type="url" placeholder="https://" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></div>
+                        <div><label className="text-xs text-slate-500 dark:text-slate-400">描述</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></div>
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium mt-2">保存</button>
+                    </form>
+                </ModalWrapper>
+            );
+        };
+
+        // 侧边栏组件
+        const Sidebar = ({ 
+            isOpenMobile, onCloseMobile, categories, selectedCategory, onSelectCategory,
+            isSyncEnabled, onToggleSync, syncStatus, onSettings, onAuth,
+            isDark, onToggleTheme, ghToken
+        }) => {
+            return (
+                <>
+                    {/* 移动端遮罩 */}
+                    {isOpenMobile && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onCloseMobile}></div>}
+                    
+                    {/* 侧边栏主体 */}
+                    <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform ${isOpenMobile ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 flex flex-col h-full shadow-2xl lg:shadow-none`}>
+                        <div className="h-16 flex items-center px-6 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0">
+                            <LayoutGrid className="w-6 h-6 text-indigo-600 dark:text-indigo-400 mr-2" />
+                            <span className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">工作台 Pro</span>
+                            <button onClick={onCloseMobile} className="lg:hidden ml-auto text-slate-500"><X className="w-5 h-5"/></button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+                            <div className="px-3 mb-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">应用分类</div>
+                            {categories.map(cat => (
+                                <button key={cat} onClick={() => { onSelectCategory(cat); onCloseMobile(); }}
+                                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${selectedCategory === cat ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-200"}`}
+                                >
+                                    <ListFilter className="w-4 h-4 mr-3 opacity-70" />
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-4 border-t border-slate-200 dark:border-slate-700/50 space-y-4 bg-slate-50/50 dark:bg-slate-800/50 flex-shrink-0">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">云端同步</span>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" className="sr-only peer" checked={isSyncEnabled} onChange={onToggleSync} />
+                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                </label>
+                            </div>
+
+                            {syncStatus.msg && (
+                                <div className={`text-xs px-2 py-1.5 rounded flex items-center ${syncStatus.type === 'error' ? 'bg-red-50 text-red-500 dark:bg-red-900/20' : 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400'}`}>
+                                    {syncStatus.type === 'loading' && <RefreshCw className="w-3 h-3 animate-spin mr-2"/>}
+                                    {syncStatus.msg}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={onSettings} className={`flex items-center justify-center px-3 py-2 text-xs font-medium rounded-md border transition-colors ${!ghToken ? 'border-yellow-400 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20' : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'}`}>
+                                    <Settings className="w-3.5 h-3.5 mr-1.5" /> 设置
+                                </button>
+                                <button onClick={onToggleTheme} className="flex items-center justify-center px-3 py-2 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors">
+                                    {isDark ? <><Sun className="w-3.5 h-3.5 mr-1.5"/> 浅色</> : <><Moon className="w-3.5 h-3.5 mr-1.5"/> 深色</>}
+                                </button>
+                            </div>
+                            {isSyncEnabled && (
+                                <button onClick={onAuth} disabled={syncStatus.type==='loading'} className="w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-all disabled:opacity-50">
+                                    <Upload className="w-4 h-4 mr-2" /> 上传
+                                </button>
+                            )}
+                        </div>
+                    </aside>
+                </>
+            );
+        };
+
+        // =========================================================================
+        // 4. 主程序
+        // =========================================================================
         function AppLauncher() {
-            // --- 状态管理 ---
+            // State
             const [customApps, setCustomApps] = useState([]);
             const [pinnedIds, setPinnedIds] = useState(() => JSON.parse(localStorage.getItem('my_pinned_apps') || '[]'));
             const [isSyncEnabled, setIsSyncEnabled] = useState(() => localStorage.getItem('is_sync_enabled') === 'true');
             const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || "");
-            
-            // UI 状态
+            const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') !== 'light');
+
             const [time, setTime] = useState(new Date());
             const [searchTerm, setSearchTerm] = useState("");
             const [selectedEngine, setSelectedEngine] = useState("baidu");
             const [selectedCategory, setSelectedCategory] = useState("全部");
-            const [syncStatus, setSyncStatus] = useState({ msg: "", type: "" }); // { msg: "同步中", type: "loading|success|error" }
-            
-            // 弹窗控制
+            const [syncStatus, setSyncStatus] = useState({ msg: "", type: "" });
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             const [modals, setModals] = useState({ auth: false, settings: false, app: false });
             const [editingApp, setEditingApp] = useState(null);
-            
-            const searchInputRef = useRef(null);
 
-            // --- 数据持久化与副作用 ---
-            
-            // 时钟
+            // Effects
             useEffect(() => {
-                const t = setInterval(() => setTime(new Date()), 1000);
-                return () => clearInterval(t);
-            }, []);
+                const root = window.document.documentElement;
+                if (isDark) { root.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
+                else { root.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
+            }, [isDark]);
 
-            // 本地缓存备份
             useEffect(() => {
                 if (isSyncEnabled) localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
                 localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds));
@@ -393,34 +347,15 @@
                 localStorage.setItem('gh_token', ghToken);
             }, [customApps, pinnedIds, isSyncEnabled, ghToken]);
 
-            // 初始化/Token变更时同步
             useEffect(() => {
                 if (isSyncEnabled && ghToken) handleSyncDown();
-                else if (!isSyncEnabled) {
-                    setCustomApps([]);
-                    setSyncStatus({ msg: "", type: "" });
-                }
-            }, [isSyncEnabled]); // 注意：不依赖 ghToken 自动触发，防止输入时抖动，由开关或保存触发
+                else if (!isSyncEnabled) { setCustomApps([]); setSyncStatus({ msg: "", type: "" }); }
+            }, [isSyncEnabled]);
 
-            // 快捷键监听
-            useEffect(() => {
-                const handleKey = (e) => {
-                    if (e.key === '/' && document.activeElement !== searchInputRef.current) {
-                        e.preventDefault(); searchInputRef.current?.focus();
-                    }
-                    if (e.key === 'Escape') {
-                        setSearchTerm("");
-                        setModals({ auth: false, settings: false, app: false });
-                        searchInputRef.current?.blur();
-                    }
-                };
-                window.addEventListener('keydown', handleKey);
-                return () => window.removeEventListener('keydown', handleKey);
-            }, []);
+            useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
 
-            // --- 业务逻辑处理 ---
-
-            const showStatus = (msg, type = 'info') => {
+            // Handlers
+            const showStatus = (msg, type) => {
                 setSyncStatus({ msg, type });
                 if (type === 'success' || type === 'error') setTimeout(() => setSyncStatus({ msg: "", type: "" }), 3000);
             };
@@ -428,7 +363,6 @@
             const handleSyncDown = async (tokenOverride) => {
                 const token = tokenOverride || ghToken;
                 if (!token) return showStatus("请配置Token", "error");
-                
                 showStatus("同步中...", "loading");
                 try {
                     const apps = await GitHubService.fetchApps(token);
@@ -441,218 +375,134 @@
             };
 
             const handleSyncUp = async () => {
-                if (!ghToken) {
-                    showStatus("请配置Token", "error");
-                    return setModals(m => ({ ...m, settings: true }));
-                }
-                showStatus("正在上传...", "loading");
-                try {
-                    await GitHubService.saveApps(ghToken, customApps);
-                    showStatus("✅ 上传成功", "success");
-                } catch (e) {
-                    showStatus(e.message, "error");
-                }
+                if (!ghToken) { showStatus("请配置Token", "error"); return setModals(m => ({ ...m, settings: true })); }
+                showStatus("上传中...", "loading");
+                try { await GitHubService.saveApps(ghToken, customApps); showStatus("✅ 上传成功", "success"); } 
+                catch (e) { showStatus(e.message, "error"); }
             };
 
-            const handleSaveToken = (newToken) => {
-                setGhToken(newToken);
-                if (newToken && isSyncEnabled) handleSyncDown(newToken);
-            };
-
-            // 应用 CRUD
             const handleSaveApp = (formData) => {
-                if (editingApp) {
-                    setCustomApps(customApps.map(a => a.id === editingApp.id ? { ...a, ...formData } : a));
-                } else {
-                    const newApp = { ...formData, id: Date.now(), icon: 'Globe', color: 'from-blue-500 to-cyan-500' };
-                    setCustomApps([...customApps, newApp]);
-                }
-            };
-            
-            const handleDeleteApp = (id) => {
-                if (confirm("确定删除吗？操作仅本地生效，请记得上传云端。")) {
-                    setCustomApps(customApps.filter(a => a.id !== id));
-                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
-                }
+                if (editingApp) setCustomApps(customApps.map(a => a.id === editingApp.id ? { ...a, ...formData } : a));
+                else setCustomApps([...customApps, { ...formData, id: Date.now(), icon: 'Globe', color: 'from-blue-500 to-cyan-500' }]);
             };
 
-            const togglePin = (id) => {
-                setPinnedIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-            };
-
-            // 搜索逻辑
-            const handleSearchSubmit = (e) => {
-                if (e.key === 'Enter' && searchTerm.trim()) {
-                    window.open(SEARCH_ENGINES[selectedEngine].url + encodeURIComponent(searchTerm), '_blank');
-                }
-            };
-
-            // 数据过滤与排序
             const allApps = isSyncEnabled ? customApps : [];
             const categories = ["全部", ...new Set(allApps.map(a => a.category))];
             
             const filteredApps = useMemo(() => {
-                return allApps
-                    .filter(app => {
+                return allApps.filter(app => {
                         const matchText = (app.name + app.description).toLowerCase().includes(searchTerm.toLowerCase());
                         const matchCat = selectedCategory === "全部" || app.category === selectedCategory;
                         return matchText && matchCat;
-                    })
-                    .sort((a, b) => {
+                    }).sort((a, b) => {
                         const aPin = pinnedIds.includes(a.id), bPin = pinnedIds.includes(b.id);
                         return (aPin === bPin) ? 0 : aPin ? -1 : 1;
                     });
             }, [allApps, searchTerm, selectedCategory, pinnedIds]);
 
-            // --- 渲染 (Render) ---
             return (
-                <div className="min-h-screen bg-slate-900 text-slate-100 font-sans overflow-x-hidden relative selection:bg-indigo-500/30 selection:text-indigo-200">
-                    {/* 背景特效 */}
-                    <div className="fixed inset-0 overflow-hidden -z-10 pointer-events-none">
-                        <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-indigo-900/20 rounded-full blur-[120px] animate-pulse"></div>
-                        <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[120px]" style={{animationDelay: '1s'}}></div>
-                    </div>
+                <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+                    {/* 左侧侧边栏 */}
+                    <Sidebar 
+                        isOpenMobile={isSidebarOpen}
+                        onCloseMobile={() => setIsSidebarOpen(false)}
+                        categories={categories}
+                        selectedCategory={selectedCategory}
+                        onSelectCategory={setSelectedCategory}
+                        isSyncEnabled={isSyncEnabled}
+                        onToggleSync={() => setIsSyncEnabled(!isSyncEnabled)}
+                        syncStatus={syncStatus}
+                        onUpload={() => setModals(m => ({...m, auth: true}))}
+                        onSettings={() => setModals(m => ({...m, settings: true}))}
+                        onAuth={() => setModals(m => ({...m, auth: true}))}
+                        isDark={isDark}
+                        onToggleTheme={() => setIsDark(!isDark)}
+                        ghToken={ghToken}
+                    />
 
-                    {/* 顶部控制栏 */}
-                    <div className="absolute top-4 right-4 z-50 flex items-center space-x-3 bg-slate-800/80 backdrop-blur-md p-2 rounded-xl border border-slate-700 shadow-xl">
-                        {syncStatus.msg && (
-                            <span className={`text-xs font-medium animate-pulse ${syncStatus.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
-                                {syncStatus.msg}
-                            </span>
-                        )}
-                        
-                        <button onClick={() => setModals(m => ({...m, settings: true}))} className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${!ghToken ? 'text-yellow-400 animate-pulse' : 'text-slate-400'}`} title="设置">
-                            <Settings className="w-4 h-4" />
-                        </button>
-                        
-                        {isSyncEnabled && (
-                            <button onClick={() => setModals(m => ({...m, auth: true}))} disabled={syncStatus.type === 'loading'} className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-500/20">
-                                {syncStatus.type === 'loading' ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
-                                <span>上传云端</span>
-                            </button>
-                        )}
-                        
-                        <div className="w-px h-4 bg-slate-600 mx-1"></div>
-                        
-                        <label className="flex items-center cursor-pointer relative" title="开启/关闭云端同步">
-                            <input type="checkbox" className="sr-only" checked={isSyncEnabled} onChange={() => setIsSyncEnabled(!isSyncEnabled)} />
-                            <div className={`w-10 h-6 rounded-full transition-colors border-2 border-transparent ${isSyncEnabled ? 'bg-green-500' : 'bg-slate-600'}`}></div>
-                            <div className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform ${isSyncEnabled ? 'translate-x-4' : 'translate-x-0'} flex items-center justify-center`}>
-                                {isSyncEnabled ? <Cloud className="w-3 h-3 text-green-500"/> : <Power className="w-3 h-3 text-slate-500"/>}
-                            </div>
-                        </label>
-                    </div>
+                    {/* 右侧主内容区 */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                        <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0 z-30">
+                            <div className="flex items-center"><LayoutGrid className="w-6 h-6 text-indigo-600 mr-2" /><span className="font-bold">工作台</span></div>
+                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-500"><Menu className="w-6 h-6"/></button>
+                        </div>
 
-                    {/* 主要内容区域 */}
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-32">
-                        
-                        {/* Header: 时钟 & 搜索 */}
-                        <header className="flex flex-col items-center justify-center mb-10 space-y-6">
-                            <div className="flex flex-col items-center animate-fade-in">
-                                <h1 className="text-6xl md:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 tracking-tighter drop-shadow-2xl font-mono">
-                                    {time.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}
-                                </h1>
-                                <div className="flex items-center gap-3 mt-2">
-                                    <span className="text-slate-400 text-lg">{time.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                                    <span className="w-1 h-1 bg-slate-500 rounded-full"></span>
-                                    <span className="text-indigo-400 font-medium">{Utils.getGreeting(time)}</span>
-                                </div>
-                                <WeatherWidget />
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-8 relative custom-scrollbar">
+                            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+                                <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[100px] animate-pulse"></div>
+                                <div className="absolute top-[20%] right-[0%] w-[30%] h-[30%] bg-blue-500/10 rounded-full blur-[100px]" style={{animationDelay: '1s'}}></div>
                             </div>
 
-                            {allApps.length > 0 && (
-                                <div className="w-full max-w-xl animate-fade-in" style={{animationDelay: '0.1s'}}>
-                                    {/* 聚合搜索栏 */}
-                                    <div className="relative group z-10 mb-6">
-                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
-                                        <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 shadow-2xl backdrop-blur-sm">
-                                            {/* 引擎选择 */}
-                                            <div className="relative flex items-center border-r border-slate-700 pl-2">
-                                                <select value={selectedEngine} onChange={(e) => setSelectedEngine(e.target.value)} className="engine-select bg-transparent text-slate-300 text-sm font-medium py-3 pl-3 pr-8 focus:outline-none cursor-pointer hover:text-white">
-                                                    {Object.entries(SEARCH_ENGINES).map(([k, v]) => <option key={k} value={k} className="bg-slate-800">{v.name}</option>)}
-                                                </select>
-                                                <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 pointer-events-none" />
-                                            </div>
-                                            {/* 输入框 */}
-                                            <div className="flex-1 flex items-center pl-3">
-                                                <Search className="w-5 h-5 text-slate-500" />
-                                                <input ref={searchInputRef} type="text" placeholder={SEARCH_ENGINES[selectedEngine].placeholder} className="w-full bg-transparent border-none text-lg px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-0" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearchSubmit} />
-                                                {searchTerm ? <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button> : <div className="px-3 hidden sm:block"><span className="text-xs bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-500">/</span></div>}
-                                            </div>
+                            <div className="max-w-6xl mx-auto pb-20">
+                                <header className="flex flex-col md:flex-row justify-between items-end md:items-center mb-8 border-b border-slate-200 dark:border-slate-800 pb-6 gap-4">
+                                    <div>
+                                        <h1 className="text-4xl font-bold font-mono tracking-tight text-slate-800 dark:text-white">{time.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}</h1>
+                                        <div className="flex items-center gap-3 mt-1 text-slate-500 dark:text-slate-400 text-sm">
+                                            <span>{time.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                                            <span className="w-1 h-1 bg-slate-400 rounded-full"></span>
+                                            <span>{Utils.getGreeting(time)}</span>
                                         </div>
                                     </div>
+                                    <div className="flex flex-col items-end gap-2"><WeatherWidget /></div>
+                                </header>
 
-                                    {/* 分类筛选 */}
-                                    <div className="flex flex-wrap justify-center gap-2">
-                                        {categories.map(cat => (
-                                            <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedCategory === cat ? "bg-white text-slate-900 shadow-lg shadow-white/10" : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white"}`}>
-                                                {cat}
-                                            </button>
-                                        ))}
+                                <div className="mb-8 relative z-20">
+                                    <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/50 transition-shadow">
+                                        <div className="relative border-r border-slate-200 dark:border-slate-700">
+                                            <select value={selectedEngine} onChange={e => setSelectedEngine(e.target.value)} className="appearance-none bg-transparent pl-4 pr-8 py-3.5 text-sm font-medium text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer">
+                                                {Object.entries(SEARCH_ENGINES).map(([k, v]) => <option key={k} value={k} className="dark:bg-slate-800">{v.name}</option>)}
+                                            </select>
+                                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        </div>
+                                        <div className="flex-1 flex items-center pl-3">
+                                            <Search className="w-5 h-5 text-slate-400" />
+                                            <input type="text" placeholder={SEARCH_ENGINES[selectedEngine].placeholder} className="w-full bg-transparent border-none text-base px-3 py-3 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-0" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchTerm.trim() && window.open(SEARCH_ENGINES[selectedEngine].url + encodeURIComponent(searchTerm), '_blank')} />
+                                            {searchTerm && <button onClick={() => setSearchTerm("")} className="px-3 text-slate-400 hover:text-slate-600 dark:hover:text-white"><X className="w-4 h-4" /></button>}
+                                        </div>
                                     </div>
                                 </div>
-                            )}
-                        </header>
 
-                        {/* App Grid */}
-                        <main className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                            {filteredApps.map((app) => {
-                                const isPinned = pinnedIds.includes(app.id);
-                                return (
-                                    <div key={app.id} className="group relative block h-full animate-fade-in">
-                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-0 group-hover:opacity-75 transition duration-500 blur-sm"></div>
-                                        <a href={app.url} target="_blank" rel="noopener noreferrer" className="relative h-full bg-slate-800/60 backdrop-blur-md border border-slate-700/50 rounded-xl p-5 flex flex-col items-start transition-all duration-300 group-hover:-translate-y-1 hover:bg-slate-800/80">
-                                            <div className="flex justify-between items-start w-full mb-3">
-                                                <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} />
-                                                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={(e) => { e.preventDefault(); setEditingApp(app); setModals(m=>({...m, app: true})); }} className="p-1.5 rounded text-slate-500 hover:bg-slate-700 hover:text-white"><Pencil className="w-4 h-4"/></button>
-                                                    <button onClick={(e) => { e.preventDefault(); togglePin(app.id); }} className={`p-1.5 rounded transition-colors ${isPinned ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Pin className={`w-4 h-4 ${isPinned?'fill-current':''}`}/></button>
-                                                    <button onClick={(e) => { e.preventDefault(); handleDeleteApp(app.id); }} className="p-1.5 rounded text-slate-500 hover:bg-red-500/20 hover:text-red-400"><Trash2 className="w-4 h-4"/></button>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                                    {filteredApps.map((app) => (
+                                        <div key={app.id} className="group relative block h-full animate-fade-in">
+                                            <a href={app.url} target="_blank" rel="noopener noreferrer" className="relative h-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-xl p-5 flex flex-col items-start transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-indigo-500/30 dark:hover:border-indigo-400/30">
+                                                <div className="flex justify-between items-start w-full mb-4">
+                                                    <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} />
+                                                    <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={(e) => { e.preventDefault(); setEditingApp(app); setModals(m=>({...m, app: true})); }} className="p-1.5 rounded text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-700"><Pencil className="w-3.5 h-3.5"/></button>
+                                                        <button onClick={(e) => { e.preventDefault(); setPinnedIds(p => p.includes(app.id) ? p.filter(i=>i!==app.id) : [...p, app.id]); }} className={`p-1.5 rounded transition-colors ${pinnedIds.includes(app.id) ? 'text-yellow-500' : 'text-slate-400 hover:text-yellow-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><Pin className={`w-3.5 h-3.5 ${pinnedIds.includes(app.id)?'fill-current':''}`}/></button>
+                                                        <button onClick={(e) => { e.preventDefault(); if(confirm("确认删除？")) { setCustomApps(prev=>prev.filter(a=>a.id!==app.id)); setPinnedIds(p=>p.filter(i=>i!==app.id)); } }} className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="w-3.5 h-3.5"/></button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <h3 className="text-lg font-bold text-white mb-1 group-hover:text-indigo-300">{app.name}</h3>
-                                            <p className="text-xs text-slate-400 line-clamp-2">{app.description}</p>
-                                        </a>
+                                                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1 line-clamp-1">{app.name}</h3>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{app.description}</p>
+                                            </a>
+                                        </div>
+                                    ))}
+                                    <button onClick={() => { setEditingApp(null); setModals(m => ({...m, app: true})); }} className="group relative h-full min-h-[140px] border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 transition-all">
+                                        <div className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mb-2 text-slate-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors"><Plus className="w-5 h-5" /></div>
+                                        <span className="text-sm font-medium text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">添加应用</span>
+                                    </button>
+                                </div>
+                                {(!isSyncEnabled || !ghToken) && allApps.length === 0 && (
+                                    <div className="mt-20 flex flex-col items-center text-slate-400">
+                                        <Cloud className="w-12 h-12 mb-3 opacity-20" />
+                                        <p className="text-sm">暂无应用数据</p>
+                                        {!isSyncEnabled && <p className="text-xs mt-1">请在左侧侧边栏开启同步</p>}
                                     </div>
-                                );
-                            })}
-
-                            {/* 空状态 / 搜索无结果 */}
-                            {filteredApps.length === 0 && searchTerm && (
-                                <div className="col-span-full py-10 flex flex-col items-center text-center animate-fade-in">
-                                    <Search className="w-8 h-8 text-slate-500 mb-4"/>
-                                    <h3 className="text-xl font-medium text-white mb-2">本地未找到 "{searchTerm}"</h3>
-                                    <p className="text-slate-400">按 <strong className="text-indigo-400">Enter</strong> 直接跳转 {SEARCH_ENGINES[selectedEngine].name} 搜索</p>
-                                </div>
-                            )}
-
-                            {(!isSyncEnabled || !ghToken) && allApps.length === 0 && (
-                                <div className="col-span-full flex flex-col items-center py-12 text-slate-500 animate-fade-in">
-                                    <Cloud className="w-12 h-12 mb-4 opacity-20" />
-                                    <p>{!isSyncEnabled ? "云端同步已关闭" : "未配置 GitHub Token"}</p>
-                                    {!isSyncEnabled ? <p className="text-xs mt-1">请点击右上角开启同步</p> : <button onClick={()=>setModals(m=>({...m, settings:true}))} className="text-xs mt-1 text-indigo-400 hover:underline">点击配置 Token</button>}
-                                </div>
-                            )}
-
-                            {/* 添加按钮 */}
-                            <button onClick={() => { setEditingApp(null); setModals(m => ({...m, app: true})); }} className="group relative h-full min-h-[160px] border-2 border-dashed border-slate-700/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all">
-                                <div className="p-3 rounded-full bg-slate-800 mb-3 text-slate-400 group-hover:text-indigo-400 group-hover:scale-110 transition-all"><Plus className="w-6 h-6" /></div>
-                                <h3 className="text-sm font-medium text-slate-300 group-hover:text-white">添加应用</h3>
-                            </button>
-                        </main>
-
-                        <footer className="mt-20 text-center text-slate-600 text-sm"><p>© {new Date().getFullYear()} 专业工作台</p></footer>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
-                    {/* 挂件与弹窗 */}
-                    <TodoWidget />
-                    <AppModal isOpen={modals.app} onClose={() => setModals(m => ({...m, app: false}))} onSave={handleSaveApp} appToEdit={editingApp} />
-                    <AuthModal isOpen={modals.auth} onClose={() => setModals(m => ({...m, auth: false}))} onSuccess={handleSyncUp} />
-                    <SettingsModal isOpen={modals.settings} onClose={() => setModals(m => ({...m, settings: false}))} currentToken={ghToken} onSave={handleSaveToken} />
+                    <div className="fixed bottom-6 right-6 z-40"><TodoWidget /></div>
+                    <AuthModal isOpen={modals.auth} onClose={()=>setModals(m=>({...m,auth:false}))} onSuccess={handleSyncUp} />
+                    <SettingsModal isOpen={modals.settings} onClose={()=>setModals(m=>({...m,settings:false}))} currentToken={ghToken} onSave={(t)=>{setGhToken(t);if(t&&isSyncEnabled)handleSyncDown(t);}} />
+                    <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} />
                 </div>
             );
         }
-
+        
         const root = createRoot(document.getElementById('root'));
         root.render(<AppLauncher />);
     </script>
