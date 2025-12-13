@@ -25,5 +25,14 @@
     "category": "工具",
     "icon": "Database",
     "color": "from-purple-600 to-pink-500"
+  },
+  {
+    "name": "百度搜索",
+    "url": "https://www.baidu.com/",
+    "description": "",
+    "category": "自定义",
+    "id": 1765612405074,
+    "icon": "Globe",
+    "color": "from-blue-500 to-cyan-500"
   }
 ]
