@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的应用工作台 - 自制版</title>
+    <title>我的应用工作台 - 专业版</title>
     
-    <!-- 1. 引入 Tailwind CSS -->
+    <!-- 1. 基础库引入 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. 引入 React 和 ReactDOM -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
     {
       "imports": {
@@ -18,18 +17,17 @@
       }
     }
     </script>
-    
-    <!-- 3. 引入 Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- 2. 全局样式 -->
     <style>
         body { background-color: #0f172a; }
-        /* 自定义滚动条 */
+        /* 滚动条优化 */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #64748b; }
         
+        /* 玻璃拟态组件 */
         .glass-panel {
             background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(12px);
@@ -37,68 +35,135 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        /* 开关动画样式 */
-        .toggle-checkbox:checked {
-            right: 0;
-            border-color: #68D391;
-        }
-        .toggle-checkbox:checked + .toggle-label {
-            background-color: #68D391;
-        }
+        /* 搜索引擎下拉框修正 */
+        .engine-select { appearance: none; background-image: none; }
+        
+        /* 动画工具类 */
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef } from 'react';
+        import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
           Search, Plus, Settings, FileText, Database, 
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
-          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key, Pencil
+          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key, Pencil, ChevronDown
         } from 'lucide-react';
 
-        // ==========================================
-        // 🔧 配置区域 (Token 已移除，由设置面板管理)
-        // ==========================================
+        // =========================================================================
+        // 1. 全局配置区域 (User Configuration)
+        // 建议非开发人员仅修改此区域
+        // =========================================================================
+        
+        // 1.1 GitHub 仓库配置
         const GH_CONFIG = {
             owner: "shenxuezhang",
             repo: "wjcmm",
             path: "db.json"
         };
 
+        // 1.2 管理员默认密码 (建议改用 Token 验证，此处仅作上传前的二次确认)
         const ADMIN_PASSWORD = "8888";
 
-        // 图标映射表
+        // 1.3 搜索引擎列表
+        const SEARCH_ENGINES = {
+            baidu:    { name: "百度",     url: "https://www.baidu.com/s?wd=",               placeholder: "百度一下..." },
+            google:   { name: "Google",   url: "https://www.google.com/search?q=",          placeholder: "Google 搜索..." },
+            bing:     { name: "Bing",     url: "https://www.bing.com/search?q=",            placeholder: "微软 Bing 搜索..." },
+            bilibili: { name: "Bilibili", url: "https://search.bilibili.com/all?keyword=",  placeholder: "搜索 B 站视频..." },
+            github:   { name: "GitHub",   url: "https://github.com/search?q=",              placeholder: "搜索代码仓库..." }
+        };
+
+        // 1.4 内置图标映射 (用于恢复特定应用的旧图标)
+        // 如果您想让某个应用使用内置图标，请确保 IconMap 中有该图标，并在应用数据中设置 icon 字段
         const IconMap = {
             Settings, FileText, Database, Globe, Cloud, Command
         };
 
-        // --- 辅助函数：Base64 编码/解码 (解决中文乱码问题) ---
-        const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
-        const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
+        // =========================================================================
+        // 2. 工具函数 (Utilities)
+        // =========================================================================
+        
+        const Utils = {
+            toBase64: (str) => window.btoa(unescape(encodeURIComponent(str))),
+            fromBase64: (str) => decodeURIComponent(escape(window.atob(str))),
+            getGreeting: (date) => {
+                const hour = date.getHours();
+                if (hour < 6) return "夜深了";
+                if (hour < 11) return "早上好";
+                if (hour < 14) return "中午好";
+                if (hour < 18) return "下午好";
+                return "晚上好";
+            }
+        };
 
-        // --- 组件: 天气小工具 ---
+        // =========================================================================
+        // 3. UI 组件库 (Components)
+        // =========================================================================
+
+        /**
+         * 应用图标组件
+         * 逻辑：优先显示配置的内置图标(iconName)，否则尝试获取 URL 的 Favicon
+         */
+        const AppIcon = ({ url, fallbackColor, iconName }) => {
+            const [imageError, setImageError] = useState(false);
+            
+            // 策略 A: 优先使用内置图标 (如果 iconName 存在且不是 Globe)
+            if (iconName && iconName !== 'Globe' && IconMap[iconName]) {
+                const IconComponent = IconMap[iconName];
+                return (
+                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-lg text-white`}>
+                        <IconComponent className="w-6 h-6" />
+                    </div>
+                );
+            }
+
+            // 策略 B: 使用 Google Favicon API
+            const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
+
+            if (imageError || !url) {
+                // 策略 C: 兜底显示默认图标
+                return (
+                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-lg text-white`}>
+                        <Globe className="w-6 h-6" />
+                    </div>
+                );
+            }
+
+            return (
+                <img 
+                    src={faviconUrl} 
+                    alt="icon"
+                    className="w-10 h-10 rounded-lg shadow-md bg-slate-800 object-cover"
+                    onError={() => setImageError(true)}
+                />
+            );
+        };
+
+        // 天气组件
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             
             useEffect(() => {
                 const fetchWeather = async () => {
                     try {
+                        // 深圳坐标
                         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current_weather=true");
                         const data = await res.json();
                         setWeather(data.current_weather);
-                    } catch (e) {
-                        console.error("天气获取失败", e);
-                    }
+                    } catch (e) { console.error("天气API错误", e); }
                 };
                 fetchWeather();
-                const interval = setInterval(fetchWeather, 1800000); 
+                const interval = setInterval(fetchWeather, 30 * 60 * 1000); // 30分钟刷新
                 return () => clearInterval(interval);
             }, []);
 
-            if (!weather) return <span className="text-slate-500 text-xs">加载天气...</span>;
+            if (!weather) return <span className="text-slate-500 text-xs animate-pulse">加载天气...</span>;
 
             let WeatherIcon = Sun;
             let text = "晴朗";
@@ -106,7 +171,7 @@
             if (weather.weathercode > 50) { WeatherIcon = CloudRain; text = "有雨"; }
 
             return (
-                <div className="flex items-center space-x-2 text-slate-300 bg-slate-800/40 px-3 py-1 rounded-full border border-slate-700/50 mt-2">
+                <div className="flex items-center space-x-2 text-slate-300 bg-slate-800/40 px-3 py-1 rounded-full border border-slate-700/50 mt-2 hover:bg-slate-800/60 transition-colors cursor-default">
                     <WeatherIcon className="w-4 h-4 text-yellow-400" />
                     <span className="text-sm font-medium">{weather.temperature}°C</span>
                     <span className="text-xs text-slate-500 hidden sm:inline"> | {text} (深圳)</span>
@@ -114,800 +179,476 @@
             );
         };
 
-        // --- 组件: 待办事项 (Todo) ---
+        // 待办事项组件
         const TodoWidget = () => {
             const [isOpen, setIsOpen] = useState(false);
-            const [todos, setTodos] = useState(() => {
-                const saved = localStorage.getItem('my_todos');
-                return saved ? JSON.parse(saved) : [];
-            });
+            const [todos, setTodos] = useState(() => JSON.parse(localStorage.getItem('my_todos') || '[]'));
             const [input, setInput] = useState("");
 
-            useEffect(() => {
-                localStorage.setItem('my_todos', JSON.stringify(todos));
-            }, [todos]);
+            useEffect(() => localStorage.setItem('my_todos', JSON.stringify(todos)), [todos]);
 
-            const addTodo = (e) => {
+            const handleAdd = (e) => {
                 e.preventDefault();
                 if (!input.trim()) return;
                 setTodos([...todos, { id: Date.now(), text: input, done: false }]);
                 setInput("");
             };
 
-            const toggleTodo = (id) => {
-                setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
-            };
-
-            const deleteTodo = (id) => {
-                setTodos(todos.filter(t => t.id !== id));
-            };
-
             return (
                 <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
                     {isOpen && (
-                        <div className="mb-4 w-72 glass-panel rounded-xl p-4 shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-200">
+                        <div className="mb-4 w-72 glass-panel rounded-xl p-4 shadow-2xl animate-fade-in">
                             <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-bold text-white">📝 待办事项</h4>
+                                <h4 className="font-bold text-white">📝 待办清单</h4>
                                 <span className="text-xs text-slate-400">{todos.filter(t => !t.done).length} 待办</span>
                             </div>
-                            
                             <ul className="max-h-60 overflow-y-auto space-y-2 mb-3 pr-1 custom-scrollbar">
                                 {todos.length === 0 && <li className="text-slate-500 text-sm text-center py-4">暂无待办，享受当下</li>}
-                                {todos.map(todo => (
-                                    <li key={todo.id} className="flex items-center group">
-                                        <button onClick={() => toggleTodo(todo.id)} className="text-slate-400 hover:text-green-400 mr-2 transition-colors">
-                                            {todo.done ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
+                                {todos.map(t => (
+                                    <li key={t.id} className="flex items-center group">
+                                        <button onClick={() => setTodos(todos.map(todo => todo.id === t.id ? {...todo, done: !todo.done} : todo))} className="mr-2">
+                                            {t.done ? <CheckCircle className="w-4 h-4 text-green-500"/> : <Circle className="w-4 h-4 text-slate-400 hover:text-green-400"/>}
                                         </button>
-                                        <span className={`text-sm flex-grow truncate ${todo.done ? 'text-slate-600 line-through' : 'text-slate-200'}`}>
-                                            {todo.text}
-                                        </span>
-                                        <button onClick={() => deleteTodo(todo.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity">
-                                            <Trash2 className="w-3 h-3" />
-                                        </button>
+                                        <span className={`text-sm flex-grow truncate ${t.done ? 'text-slate-600 line-through' : 'text-slate-200'}`}>{t.text}</span>
+                                        <button onClick={() => setTodos(todos.filter(todo => todo.id !== t.id))} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
                                     </li>
                                 ))}
                             </ul>
-
-                            <form onSubmit={addTodo} className="relative">
-                                <input 
-                                    type="text" 
-                                    value={input}
-                                    onChange={e => setInput(e.target.value)}
-                                    placeholder="添加新任务..."
-                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                />
-                            </form>
+                            <form onSubmit={handleAdd}><input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="添加任务..." className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"/></form>
                         </div>
                     )}
-                    
-                    <button 
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-all hover:scale-105 active:scale-95"
-                    >
+                    <button onClick={() => setIsOpen(!isOpen)} className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95">
                         {isOpen ? <X className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
                     </button>
                 </div>
             );
         };
 
-        // --- 组件: 管理员密码验证弹窗 ---
-        const AuthModal = ({ isOpen, onClose, onSuccess }) => {
+        // =========================================================================
+        // 4. 弹窗组件集合 (Modals)
+        // =========================================================================
+
+        const ModalWrapper = ({ isOpen, onClose, title, icon: Icon, children }) => {
             if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-5 h-5"/></button>
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
+                            {Icon && <Icon className="w-5 h-5 mr-2 text-indigo-400" />} {title}
+                        </h2>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        const AuthModal = ({ isOpen, onClose, onSuccess }) => {
             const [password, setPassword] = useState("");
             const [error, setError] = useState(false);
-
             const handleSubmit = (e) => {
                 e.preventDefault();
-                if (password === ADMIN_PASSWORD) {
-                    onSuccess();
-                    onClose();
-                    setPassword("");
-                    setError(false);
-                } else {
-                    setError(true);
-                    setPassword("");
-                }
+                if (password === ADMIN_PASSWORD) { onSuccess(); onClose(); setPassword(""); setError(false); } 
+                else { setError(true); setPassword(""); }
             };
-
             return (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-sm p-6 shadow-2xl relative">
-                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-                            <X className="w-5 h-5" />
-                        </button>
-                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
-                            <Lock className="w-5 h-5 mr-2 text-yellow-400" /> 管理员验证
-                        </h2>
-                        <p className="text-sm text-slate-400 mb-4">上传数据会覆盖云端文件，请输入管理员密码以继续。</p>
-                        
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <input 
-                                    autoFocus
-                                    type="password" 
-                                    placeholder="请输入密码"
-                                    className={`w-full bg-slate-900 border ${error ? 'border-red-500' : 'border-slate-600'} rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500 transition-colors`}
-                                    value={password} 
-                                    onChange={e => {setPassword(e.target.value); setError(false);}} 
-                                />
-                                {error && <p className="text-red-400 text-xs mt-1">密码错误</p>}
-                            </div>
-                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium transition-colors">
-                                确认上传
-                            </button>
-                        </form>
-                    </div>
-                </div>
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title="管理员验证" icon={Lock}>
+                    <p className="text-sm text-slate-400 mb-4">操作需管理员权限。</p>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <input autoFocus type="password" placeholder="请输入密码" className={`w-full bg-slate-900 border ${error ? 'border-red-500' : 'border-slate-600'} rounded-lg px-3 py-2 text-white outline-none`} value={password} onChange={e => {setPassword(e.target.value); setError(false);}} />
+                        {error && <p className="text-red-400 text-xs">密码错误</p>}
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium">确认</button>
+                    </form>
+                </ModalWrapper>
             );
         };
 
-        // --- 组件: GitHub Token 设置弹窗 ---
         const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
-            if (!isOpen) return null;
-            const [tokenInput, setTokenInput] = useState(currentToken || "");
-            const [showToken, setShowToken] = useState(false);
-
-            useEffect(() => {
-                setTokenInput(currentToken || "");
-            }, [currentToken]);
-
-            const handleSave = (e) => {
-                e.preventDefault();
-                onSave(tokenInput.trim());
-                onClose();
-            };
-
+            const [token, setToken] = useState(currentToken);
+            const [show, setShow] = useState(false);
+            useEffect(() => setToken(currentToken || ""), [currentToken]);
             return (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
-                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-                            <X className="w-5 h-5" />
-                        </button>
-                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
-                            <Settings className="w-5 h-5 mr-2 text-indigo-400" /> 系统设置
-                        </h2>
-                        
-                        <form onSubmit={handleSave} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">GitHub Token (密钥)</label>
-                                <div className="relative">
-                                    <input 
-                                        type={showToken ? "text" : "password"}
-                                        placeholder="ghp_xxxxxxxxxxxx"
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-3 pr-10 py-2 text-white outline-none focus:border-indigo-500 transition-colors"
-                                        value={tokenInput} 
-                                        onChange={e => setTokenInput(e.target.value)} 
-                                    />
-                                    <button 
-                                        type="button"
-                                        onClick={() => setShowToken(!showToken)}
-                                        className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
-                                    >
-                                        {showToken ? <span className="text-xs">隐藏</span> : <span className="text-xs">显示</span>}
-                                    </button>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-2">
-                                    Token 将仅保存在您当前浏览器的本地缓存 (LocalStorage) 中，不会上传到任何服务器。
-                                    <br/>请确保 Token 拥有 Repo 读写权限。
-                                </p>
-                            </div>
-                            <div className="flex justify-end pt-2">
-                                <button type="submit" className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center">
-                                    <Check className="w-4 h-4 mr-1" /> 保存配置
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title="系统设置" icon={Settings}>
+                    <form onSubmit={(e) => { e.preventDefault(); onSave(token.trim()); onClose(); }}>
+                        <label className="block text-sm font-medium text-slate-300 mb-1">GitHub Token</label>
+                        <div className="relative mb-2">
+                            <input type={show ? "text" : "password"} placeholder="ghp_..." className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-3 pr-10 py-2 text-white outline-none focus:border-indigo-500" value={token} onChange={e => setToken(e.target.value)} />
+                            <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-2.5 text-slate-500 hover:text-white text-xs">{show ? '隐藏' : '显示'}</button>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">Token 仅保存在本地浏览器缓存中。</p>
+                        <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-medium flex justify-center items-center"><Check className="w-4 h-4 mr-1"/> 保存配置</button>
+                    </form>
+                </ModalWrapper>
             );
         };
 
-        // --- 组件: 应用表单弹窗 (添加/编辑通用) ---
         const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
-            if (!isOpen) return null;
-            
-            const [formData, setFormData] = useState({ 
-                name: '', url: '', description: '', category: '自定义' 
-            });
-
-            // 当 appToEdit 变化或打开弹窗时，设置初始数据
+            const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义' });
             useEffect(() => {
-                if (isOpen) {
-                    if (appToEdit) {
-                        setFormData({
-                            name: appToEdit.name,
-                            url: appToEdit.url,
-                            description: appToEdit.description,
-                            category: appToEdit.category
-                        });
-                    } else {
-                        setFormData({ name: '', url: '', description: '', category: '自定义' });
-                    }
-                }
+                if (isOpen) setForm(appToEdit ? { ...appToEdit } : { name: '', url: '', description: '', category: '自定义' });
             }, [isOpen, appToEdit]);
-
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                onSave(formData);
-                onClose();
-            };
-
-            const isEdit = !!appToEdit;
-
+            
             return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
-                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-                            <X className="w-5 h-5" />
-                        </button>
-                        <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-                            {isEdit ? <Pencil className="w-5 h-5 mr-2 text-indigo-400" /> : <Plus className="w-5 h-5 mr-2 text-indigo-400" />}
-                            {isEdit ? '编辑应用' : '添加新应用'}
-                        </h2>
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">应用名称</label>
-                                <input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
-                                    value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">链接地址 (URL)</label>
-                                <input required type="url" placeholder="https://" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
-                                    value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">描述</label>
-                                <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-indigo-500 outline-none" 
-                                    value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                            </div>
-                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-lg font-medium transition-colors mt-2">
-                                {isEdit ? '保存修改' : '确认添加'}
-                            </button>
-                        </form>
-                    </div>
-                </div>
+                <ModalWrapper isOpen={isOpen} onClose={onClose} title={appToEdit ? "编辑应用" : "添加新应用"} icon={appToEdit ? Pencil : Plus}>
+                    <form onSubmit={(e) => { e.preventDefault(); onSave(form); onClose(); }} className="space-y-4">
+                        <div><label className="text-xs text-slate-400">名称</label><input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+                        <div>
+                            <label className="text-xs text-slate-400">URL</label>
+                            <input required type="url" placeholder="https://" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.url} onChange={e => setForm({...form, url: e.target.value})} />
+                            <p className="text-[10px] text-slate-500 mt-1">* 自动获取图标。旧应用如需特定图标，请确保数据源包含 icon 字段。</p>
+                        </div>
+                        <div><label className="text-xs text-slate-400">描述</label><input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none" value={form.description} onChange={e => setForm({...form, description: e.target.value})} /></div>
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium">{appToEdit ? '保存修改' : '确认添加'}</button>
+                    </form>
+                </ModalWrapper>
             );
         };
 
-        // --- 主程序 ---
+        // =========================================================================
+        // 5. 核心逻辑业务 (GitHub API Service)
+        // =========================================================================
+        
+        const GitHubService = {
+            getApiUrl: () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`,
+            
+            async fetchApps(token) {
+                if (!token) throw new Error("请配置Token");
+                const res = await fetch(this.getApiUrl(), {
+                    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+                });
+                if (res.status === 401) throw new Error("Token无效/过期");
+                if (res.status === 404) return []; // 文件不存在，返回空数组
+                if (!res.ok) throw new Error(`API Error ${res.status}`);
+                
+                const data = await res.json();
+                return JSON.parse(Utils.fromBase64(data.content));
+            },
+
+            async saveApps(token, apps) {
+                if (!token) throw new Error("请配置Token");
+                const url = this.getApiUrl();
+                
+                // 1. 获取当前 SHA (用于覆盖)
+                let sha = null;
+                try {
+                    const getRes = await fetch(url, { headers: { 'Authorization': `token ${token}` } });
+                    if (getRes.ok) sha = (await getRes.json()).sha;
+                } catch (e) {}
+
+                // 2. 推送更新
+                const content = Utils.toBase64(JSON.stringify(apps, null, 2));
+                const res = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: `Update via Dashboard - ${new Date().toLocaleString()}`,
+                        content: content,
+                        ...(sha && { sha })
+                    })
+                });
+
+                if (res.status === 401) throw new Error("Token无效");
+                if (!res.ok) throw new Error("上传失败");
+                return true;
+            }
+        };
+
+        // =========================================================================
+        // 6. 主应用程序 (Main App)
+        // =========================================================================
+        
         function AppLauncher() {
-            // State
+            // --- 状态管理 ---
             const [customApps, setCustomApps] = useState([]);
-            const [pinnedIds, setPinnedIds] = useState(() => {
-                const saved = localStorage.getItem('my_pinned_apps');
-                return saved ? JSON.parse(saved) : [];
-            });
-            const [searchTerm, setSearchTerm] = useState("");
-            const [selectedCategory, setSelectedCategory] = useState("全部");
+            const [pinnedIds, setPinnedIds] = useState(() => JSON.parse(localStorage.getItem('my_pinned_apps') || '[]'));
+            const [isSyncEnabled, setIsSyncEnabled] = useState(() => localStorage.getItem('is_sync_enabled') === 'true');
+            const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || "");
+            
+            // UI 状态
             const [time, setTime] = useState(new Date());
+            const [searchTerm, setSearchTerm] = useState("");
+            const [selectedEngine, setSelectedEngine] = useState("baidu");
+            const [selectedCategory, setSelectedCategory] = useState("全部");
+            const [syncStatus, setSyncStatus] = useState({ msg: "", type: "" }); // { msg: "同步中", type: "loading|success|error" }
             
-            // App Edit/Add State
-            const [isAppModalOpen, setIsAppModalOpen] = useState(false);
-            const [editingApp, setEditingApp] = useState(null); // null 表示添加，有值表示编辑
-            
-            // Cloud Sync & Token State
-            const [isSyncEnabled, setIsSyncEnabled] = useState(() => {
-                return localStorage.getItem('is_sync_enabled') === 'true';
-            });
-            const [syncLoading, setSyncLoading] = useState(false);
-            const [syncStatus, setSyncStatus] = useState("");
-            const [ghToken, setGhToken] = useState(() => {
-                // 初始化时从本地存储读取 Token
-                return localStorage.getItem('gh_token') || "";
-            });
-            
-            // Modals
-            const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-            const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+            // 弹窗控制
+            const [modals, setModals] = useState({ auth: false, settings: false, app: false });
+            const [editingApp, setEditingApp] = useState(null);
             
             const searchInputRef = useRef(null);
 
-            // 当不开启同步时，应用列表为空；开启时，从 customApps 读取
-            const allApps = isSyncEnabled ? [...customApps] : [];
-
-            // 派生数据：分类
-            const categories = ["全部", ...new Set(allApps.map(app => app.category))];
-
-            // Effect: 存储持久化
-            useEffect(() => { 
-                if (isSyncEnabled) {
-                    localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
-                }
-            }, [customApps, isSyncEnabled]);
+            // --- 数据持久化与副作用 ---
             
-            useEffect(() => { localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds)); }, [pinnedIds]);
-            
-            useEffect(() => { 
-                localStorage.setItem('is_sync_enabled', isSyncEnabled); 
-                if (isSyncEnabled) {
-                    fetchFromGitHub();
-                } else {
-                    setCustomApps([]);
-                    setSyncStatus("");
-                }
-            }, [isSyncEnabled]); 
-
-            // Effect: 时钟
+            // 时钟
             useEffect(() => {
-                const timer = setInterval(() => setTime(new Date()), 1000);
-                return () => clearInterval(timer);
+                const t = setInterval(() => setTime(new Date()), 1000);
+                return () => clearInterval(t);
             }, []);
 
-            // Effect: 键盘快捷键
+            // 本地缓存备份
             useEffect(() => {
-                const handleKeyDown = (e) => {
+                if (isSyncEnabled) localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
+                localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds));
+                localStorage.setItem('is_sync_enabled', isSyncEnabled);
+                localStorage.setItem('gh_token', ghToken);
+            }, [customApps, pinnedIds, isSyncEnabled, ghToken]);
+
+            // 初始化/Token变更时同步
+            useEffect(() => {
+                if (isSyncEnabled && ghToken) handleSyncDown();
+                else if (!isSyncEnabled) {
+                    setCustomApps([]);
+                    setSyncStatus({ msg: "", type: "" });
+                }
+            }, [isSyncEnabled]); // 注意：不依赖 ghToken 自动触发，防止输入时抖动，由开关或保存触发
+
+            // 快捷键监听
+            useEffect(() => {
+                const handleKey = (e) => {
                     if (e.key === '/' && document.activeElement !== searchInputRef.current) {
-                        e.preventDefault();
-                        searchInputRef.current?.focus();
+                        e.preventDefault(); searchInputRef.current?.focus();
                     }
                     if (e.key === 'Escape') {
                         setSearchTerm("");
-                        setIsAppModalOpen(false);
-                        setIsAuthModalOpen(false);
-                        setIsSettingsModalOpen(false);
+                        setModals({ auth: false, settings: false, app: false });
                         searchInputRef.current?.blur();
                     }
                 };
-                window.addEventListener('keydown', handleKeyDown);
-                return () => window.removeEventListener('keydown', handleKeyDown);
+                window.addEventListener('keydown', handleKey);
+                return () => window.removeEventListener('keydown', handleKey);
             }, []);
 
-            // --- GitHub API 逻辑 ---
-            
-            const getApiUrl = () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`;
+            // --- 业务逻辑处理 ---
+
+            const showStatus = (msg, type = 'info') => {
+                setSyncStatus({ msg, type });
+                if (type === 'success' || type === 'error') setTimeout(() => setSyncStatus({ msg: "", type: "" }), 3000);
+            };
+
+            const handleSyncDown = async (tokenOverride) => {
+                const token = tokenOverride || ghToken;
+                if (!token) return showStatus("请配置Token", "error");
+                
+                showStatus("同步中...", "loading");
+                try {
+                    const apps = await GitHubService.fetchApps(token);
+                    setCustomApps(apps);
+                    showStatus("同步成功", "success");
+                } catch (e) {
+                    showStatus(e.message, "error");
+                    if (e.message.includes("Token")) setModals(m => ({ ...m, settings: true }));
+                }
+            };
+
+            const handleSyncUp = async () => {
+                if (!ghToken) {
+                    showStatus("请配置Token", "error");
+                    return setModals(m => ({ ...m, settings: true }));
+                }
+                showStatus("正在上传...", "loading");
+                try {
+                    await GitHubService.saveApps(ghToken, customApps);
+                    showStatus("✅ 上传成功", "success");
+                } catch (e) {
+                    showStatus(e.message, "error");
+                }
+            };
 
             const handleSaveToken = (newToken) => {
                 setGhToken(newToken);
-                localStorage.setItem('gh_token', newToken); // 保存到本地
-                if (newToken && isSyncEnabled) {
-                    setTimeout(() => fetchFromGitHub(newToken), 100);
-                }
+                if (newToken && isSyncEnabled) handleSyncDown(newToken);
             };
 
-            // 1. 从云端拉取
-            const fetchFromGitHub = async (overrideToken = null) => {
-                const tokenToUse = overrideToken || ghToken;
-                
-                if (!tokenToUse) {
-                    setSyncStatus("请配置Token");
-                    return;
-                }
-
-                setSyncLoading(true);
-                setSyncStatus("同步中...");
-                
-                try {
-                    const res = await fetch(getApiUrl(), {
-                        headers: {
-                            'Authorization': `token ${tokenToUse}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    });
-
-                    if (res.status === 401) {
-                        setSyncStatus("Token无效/过期");
-                    } else if (res.status === 404) {
-                        setSyncStatus("文件未找到 (请上传)");
-                        setCustomApps([]);
-                    } else if (!res.ok) {
-                        throw new Error(`Err ${res.status}`);
-                    } else {
-                        const data = await res.json();
-                        const contentStr = fromBase64(data.content);
-                        const apps = JSON.parse(contentStr);
-                        
-                        if (Array.isArray(apps)) {
-                            setCustomApps(apps);
-                            setSyncStatus("同步成功");
-                            setTimeout(() => setSyncStatus(""), 3000);
-                        } else {
-                            setSyncStatus("数据格式错误");
-                        }
-                    }
-                } catch (error) {
-                    console.error(error);
-                    setSyncStatus("同步失败");
-                } finally {
-                    setSyncLoading(false);
-                }
-            };
-
-            // 2. 上传到云端 (被 AuthModal 调用)
-            const pushToGitHub = async () => {
-                if (!ghToken) {
-                    setSyncStatus("请配置Token");
-                    setIsSettingsModalOpen(true);
-                    return;
-                }
-
-                setSyncLoading(true);
-                setSyncStatus("正在上传...");
-
-                try {
-                    const url = getApiUrl();
-                    
-                    // 获取 SHA
-                    let sha = null;
-                    try {
-                        const getRes = await fetch(url, {
-                            headers: { 
-                                'Authorization': `token ${ghToken}`,
-                                'Accept': 'application/vnd.github.v3+json'
-                            }
-                        });
-                        if (getRes.ok) {
-                            const getData = await getRes.json();
-                            sha = getData.sha;
-                        }
-                    } catch (e) { }
-
-                    // 更新
-                    const content = toBase64(JSON.stringify(customApps, null, 2));
-                    const body = {
-                        message: `Update apps via Dashboard - ${new Date().toLocaleString()}`,
-                        content: content,
-                        ...(sha && { sha })
-                    };
-
-                    const putRes = await fetch(url, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${ghToken}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(body)
-                    });
-
-                    if (!putRes.ok) {
-                        if (putRes.status === 401) throw new Error("Token无效");
-                        throw new Error("Upload failed");
-                    }
-
-                    setSyncStatus("✅ 上传成功");
-                    setTimeout(() => setSyncStatus(""), 3000);
-
-                } catch (error) {
-                    console.error(error);
-                    setSyncStatus(error.message === "Token无效" ? "Token无效" : "上传失败");
-                } finally {
-                    setSyncLoading(false);
-                }
-            };
-
-
-            // 功能函数
-            const togglePin = (e, id) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (pinnedIds.includes(id)) {
-                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
-                } else {
-                    setPinnedIds([...pinnedIds, id]);
-                }
-            };
-
-            const deleteApp = (e, id) => {
-                e.preventDefault();
-                e.stopPropagation(); // 防止跳转
-                if(confirm("确定要删除这个应用吗？删除后请点击右上角'上传云端'保存。")) {
-                    setCustomApps(customApps.filter(app => app.id !== id));
-                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
-                }
-            };
-
-            const openEditApp = (e, app) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setEditingApp(app);
-                setIsAppModalOpen(true);
-            };
-
+            // 应用 CRUD
             const handleSaveApp = (formData) => {
                 if (editingApp) {
-                    // 编辑模式：更新现有应用
-                    setCustomApps(customApps.map(app => 
-                        app.id === editingApp.id 
-                            ? { ...app, ...formData } 
-                            : app
-                    ));
+                    setCustomApps(customApps.map(a => a.id === editingApp.id ? { ...a, ...formData } : a));
                 } else {
-                    // 添加模式：创建新应用
-                    const newApp = { 
-                        ...formData, 
-                        id: Date.now(), 
-                        icon: 'Globe', 
-                        color: 'from-blue-500 to-cyan-500' 
-                    };
+                    const newApp = { ...formData, id: Date.now(), icon: 'Globe', color: 'from-blue-500 to-cyan-500' };
                     setCustomApps([...customApps, newApp]);
                 }
             };
-
-            // 过滤与排序逻辑
-            const filteredApps = allApps
-                .filter(app => {
-                    const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                          app.description.toLowerCase().includes(searchTerm.toLowerCase());
-                    const matchesCategory = selectedCategory === "全部" || app.category === selectedCategory;
-                    return matchesSearch && matchesCategory;
-                })
-                .sort((a, b) => {
-                    const aPinned = pinnedIds.includes(a.id);
-                    const bPinned = pinnedIds.includes(b.id);
-                    if (aPinned && !bPinned) return -1;
-                    if (!aPinned && bPinned) return 1;
-                    return 0;
-                });
-
-            const getGreeting = () => {
-                const hour = time.getHours();
-                if (hour < 6) return "夜深了";
-                if (hour < 11) return "早上好";
-                if (hour < 14) return "中午好";
-                if (hour < 18) return "下午好";
-                return "晚上好";
+            
+            const handleDeleteApp = (id) => {
+                if (confirm("确定删除吗？操作仅本地生效，请记得上传云端。")) {
+                    setCustomApps(customApps.filter(a => a.id !== id));
+                    setPinnedIds(pinnedIds.filter(pid => pid !== id));
+                }
             };
 
+            const togglePin = (id) => {
+                setPinnedIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+            };
+
+            // 搜索逻辑
+            const handleSearchSubmit = (e) => {
+                if (e.key === 'Enter' && searchTerm.trim()) {
+                    window.open(SEARCH_ENGINES[selectedEngine].url + encodeURIComponent(searchTerm), '_blank');
+                }
+            };
+
+            // 数据过滤与排序
+            const allApps = isSyncEnabled ? customApps : [];
+            const categories = ["全部", ...new Set(allApps.map(a => a.category))];
+            
+            const filteredApps = useMemo(() => {
+                return allApps
+                    .filter(app => {
+                        const matchText = (app.name + app.description).toLowerCase().includes(searchTerm.toLowerCase());
+                        const matchCat = selectedCategory === "全部" || app.category === selectedCategory;
+                        return matchText && matchCat;
+                    })
+                    .sort((a, b) => {
+                        const aPin = pinnedIds.includes(a.id), bPin = pinnedIds.includes(b.id);
+                        return (aPin === bPin) ? 0 : aPin ? -1 : 1;
+                    });
+            }, [allApps, searchTerm, selectedCategory, pinnedIds]);
+
+            // --- 渲染 (Render) ---
             return (
                 <div className="min-h-screen bg-slate-900 text-slate-100 font-sans overflow-x-hidden relative selection:bg-indigo-500/30 selection:text-indigo-200">
-                    
-                    {/* 背景动画 */}
+                    {/* 背景特效 */}
                     <div className="fixed inset-0 overflow-hidden -z-10 pointer-events-none">
                         <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-indigo-900/20 rounded-full blur-[120px] animate-pulse"></div>
                         <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[120px]" style={{animationDelay: '1s'}}></div>
                     </div>
 
-                    {/* 右上角控制区：云端同步开关与状态 */}
+                    {/* 顶部控制栏 */}
                     <div className="absolute top-4 right-4 z-50 flex items-center space-x-3 bg-slate-800/80 backdrop-blur-md p-2 rounded-xl border border-slate-700 shadow-xl">
-                        
-                        {/* 状态文字 */}
-                        {syncStatus && (
-                            <span className={`text-xs font-medium animate-pulse ${syncStatus.includes('失败') || syncStatus.includes('无效') || syncStatus.includes('配置') ? 'text-red-400' : 'text-green-400'}`}>
-                                {syncStatus}
+                        {syncStatus.msg && (
+                            <span className={`text-xs font-medium animate-pulse ${syncStatus.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                                {syncStatus.msg}
                             </span>
                         )}
-
-                        {/* 设置按钮 */}
-                        <button 
-                            onClick={() => setIsSettingsModalOpen(true)}
-                            className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${!ghToken ? 'text-yellow-400 animate-pulse' : 'text-slate-400'}`}
-                            title="配置 GitHub Token"
-                        >
+                        
+                        <button onClick={() => setModals(m => ({...m, settings: true}))} className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${!ghToken ? 'text-yellow-400 animate-pulse' : 'text-slate-400'}`} title="设置">
                             <Settings className="w-4 h-4" />
                         </button>
-
-                        {/* 上传按钮 (触发密码弹窗) */}
+                        
                         {isSyncEnabled && (
-                            <button 
-                                onClick={() => setIsAuthModalOpen(true)}
-                                disabled={syncLoading}
-                                className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
-                                title="需管理员密码"
-                            >
-                                {syncLoading ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                            <button onClick={() => setModals(m => ({...m, auth: true}))} disabled={syncStatus.type === 'loading'} className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-500/20">
+                                {syncStatus.type === 'loading' ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
                                 <span>上传云端</span>
                             </button>
                         )}
-
-                        {/* 分隔线 */}
+                        
                         <div className="w-px h-4 bg-slate-600 mx-1"></div>
-
-                        {/* 开关 Toggle */}
-                        <div className="flex items-center">
-                            <label htmlFor="sync-toggle" className="flex items-center cursor-pointer relative">
-                                <input 
-                                    type="checkbox" 
-                                    id="sync-toggle" 
-                                    className="sr-only" 
-                                    checked={isSyncEnabled}
-                                    onChange={() => setIsSyncEnabled(!isSyncEnabled)}
-                                />
-                                <div className={`w-10 h-6 rounded-full transition-colors duration-200 ease-in-out border-2 border-transparent ${isSyncEnabled ? 'bg-green-500' : 'bg-slate-600'}`}></div>
-                                <div className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ease-in-out transform ${isSyncEnabled ? 'translate-x-4' : 'translate-x-0'}`}>
-                                    <div className="flex items-center justify-center h-full w-full text-[10px] font-bold text-slate-500">
-                                        {isSyncEnabled ? <Cloud className="w-3 h-3 text-green-500"/> : <Power className="w-3 h-3"/>}
-                                    </div>
-                                </div>
-                            </label>
-                        </div>
+                        
+                        <label className="flex items-center cursor-pointer relative" title="开启/关闭云端同步">
+                            <input type="checkbox" className="sr-only" checked={isSyncEnabled} onChange={() => setIsSyncEnabled(!isSyncEnabled)} />
+                            <div className={`w-10 h-6 rounded-full transition-colors border-2 border-transparent ${isSyncEnabled ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                            <div className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform ${isSyncEnabled ? 'translate-x-4' : 'translate-x-0'} flex items-center justify-center`}>
+                                {isSyncEnabled ? <Cloud className="w-3 h-3 text-green-500"/> : <Power className="w-3 h-3 text-slate-500"/>}
+                            </div>
+                        </label>
                     </div>
 
+                    {/* 主要内容区域 */}
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-32">
                         
-                        {/* 头部 */}
+                        {/* Header: 时钟 & 搜索 */}
                         <header className="flex flex-col items-center justify-center mb-10 space-y-6">
-                            <div className="flex flex-col items-center">
+                            <div className="flex flex-col items-center animate-fade-in">
                                 <h1 className="text-6xl md:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 tracking-tighter drop-shadow-2xl font-mono">
                                     {time.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}
                                 </h1>
                                 <div className="flex items-center gap-3 mt-2">
-                                    <span className="text-slate-400 text-lg">
-                                        {time.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                    </span>
+                                    <span className="text-slate-400 text-lg">{time.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
                                     <span className="w-1 h-1 bg-slate-500 rounded-full"></span>
-                                    <span className="text-indigo-400 font-medium">{getGreeting()}</span>
+                                    <span className="text-indigo-400 font-medium">{Utils.getGreeting(time)}</span>
                                 </div>
                                 <WeatherWidget />
                             </div>
 
-                            {/* 搜索框 */}
                             {allApps.length > 0 && (
-                                <>
-                                <div className="relative w-full max-w-xl group z-10">
-                                    <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
-                                    <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 p-2 shadow-2xl backdrop-blur-sm">
-                                        <Search className="w-5 h-5 text-slate-500 ml-3" />
-                                        <input
-                                            ref={searchInputRef}
-                                            type="text"
-                                            placeholder="搜索应用... (按 '/' 聚焦)"
-                                            className="w-full bg-transparent border-none focus:ring-0 text-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none"
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                        />
-                                        {searchTerm ? (
-                                            <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white">
-                                                <span className="text-xs border border-slate-600 rounded px-1.5 py-0.5">ESC</span>
-                                            </button>
-                                        ) : (
-                                            <div className="px-3 text-slate-600 hidden sm:block">
-                                                <Command className="w-4 h-4 inline mr-1 opacity-50" />
-                                                <span className="text-xs">/</span>
+                                <div className="w-full max-w-xl animate-fade-in" style={{animationDelay: '0.1s'}}>
+                                    {/* 聚合搜索栏 */}
+                                    <div className="relative group z-10 mb-6">
+                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
+                                        <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 shadow-2xl backdrop-blur-sm">
+                                            {/* 引擎选择 */}
+                                            <div className="relative flex items-center border-r border-slate-700 pl-2">
+                                                <select value={selectedEngine} onChange={(e) => setSelectedEngine(e.target.value)} className="engine-select bg-transparent text-slate-300 text-sm font-medium py-3 pl-3 pr-8 focus:outline-none cursor-pointer hover:text-white">
+                                                    {Object.entries(SEARCH_ENGINES).map(([k, v]) => <option key={k} value={k} className="bg-slate-800">{v.name}</option>)}
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 pointer-events-none" />
                                             </div>
-                                        )}
+                                            {/* 输入框 */}
+                                            <div className="flex-1 flex items-center pl-3">
+                                                <Search className="w-5 h-5 text-slate-500" />
+                                                <input ref={searchInputRef} type="text" placeholder={SEARCH_ENGINES[selectedEngine].placeholder} className="w-full bg-transparent border-none text-lg px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-0" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearchSubmit} />
+                                                {searchTerm ? <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button> : <div className="px-3 hidden sm:block"><span className="text-xs bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-500">/</span></div>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 分类筛选 */}
+                                    <div className="flex flex-wrap justify-center gap-2">
+                                        {categories.map(cat => (
+                                            <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedCategory === cat ? "bg-white text-slate-900 shadow-lg shadow-white/10" : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white"}`}>
+                                                {cat}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-
-                                {/* 分类 Filter */}
-                                <div className="flex flex-wrap justify-center gap-2">
-                                    {categories.map(cat => (
-                                        <button
-                                            key={cat}
-                                            onClick={() => setSelectedCategory(cat)}
-                                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                                                selectedCategory === cat
-                                                    ? "bg-white text-slate-900 shadow-lg shadow-white/10"
-                                                    : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white border border-transparent hover:border-slate-600"
-                                            }`}
-                                        >
-                                            {cat}
-                                        </button>
-                                    ))}
-                                </div>
-                                </>
                             )}
                         </header>
 
-                        {/* 应用列表 Grid */}
+                        {/* App Grid */}
                         <main className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                             {filteredApps.map((app) => {
-                                const IconComponent = IconMap[app.icon] || Globe;
                                 const isPinned = pinnedIds.includes(app.id);
-
                                 return (
-                                    <div key={app.id} className="group relative block h-full animate-in fade-in zoom-in duration-300">
+                                    <div key={app.id} className="group relative block h-full animate-fade-in">
                                         <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-0 group-hover:opacity-75 transition duration-500 blur-sm"></div>
-                                        
-                                        <a href={app.url} target="_blank" rel="noopener noreferrer" 
-                                           className="relative h-full bg-slate-800/60 backdrop-blur-md border border-slate-700/50 rounded-xl p-5 flex flex-col items-start transition-all duration-300 group-hover:-translate-y-1 hover:bg-slate-800/80">
-                                            
-                                            {/* 卡片顶部栏 */}
+                                        <a href={app.url} target="_blank" rel="noopener noreferrer" className="relative h-full bg-slate-800/60 backdrop-blur-md border border-slate-700/50 rounded-xl p-5 flex flex-col items-start transition-all duration-300 group-hover:-translate-y-1 hover:bg-slate-800/80">
                                             <div className="flex justify-between items-start w-full mb-3">
-                                                <div className={`p-2.5 rounded-lg bg-gradient-to-br ${app.color} shadow-lg text-white`}>
-                                                    <IconComponent className="w-5 h-5" />
-                                                </div>
-                                                <div className="flex space-x-1">
-                                                    {/* 编辑按钮 (新增) */}
-                                                    <button 
-                                                        onClick={(e) => openEditApp(e, app)}
-                                                        className="p-1.5 rounded-md text-slate-600 hover:text-white hover:bg-slate-700 transition-colors"
-                                                        title="编辑"
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => togglePin(e, app.id)}
-                                                        className={`p-1.5 rounded-md transition-colors ${isPinned ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700'}`}
-                                                        title={isPinned ? "取消置顶" : "置顶"}
-                                                    >
-                                                        <Pin className={`w-4 h-4 ${isPinned ? 'fill-current' : ''}`} />
-                                                    </button>
-                                                    {/* 删除按钮 */}
-                                                    <button 
-                                                        onClick={(e) => deleteApp(e, app.id)}
-                                                        className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                                                        title="删除 (点击后需手动上传云端)"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} />
+                                                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={(e) => { e.preventDefault(); setEditingApp(app); setModals(m=>({...m, app: true})); }} className="p-1.5 rounded text-slate-500 hover:bg-slate-700 hover:text-white"><Pencil className="w-4 h-4"/></button>
+                                                    <button onClick={(e) => { e.preventDefault(); togglePin(app.id); }} className={`p-1.5 rounded transition-colors ${isPinned ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Pin className={`w-4 h-4 ${isPinned?'fill-current':''}`}/></button>
+                                                    <button onClick={(e) => { e.preventDefault(); handleDeleteApp(app.id); }} className="p-1.5 rounded text-slate-500 hover:bg-red-500/20 hover:text-red-400"><Trash2 className="w-4 h-4"/></button>
                                                 </div>
                                             </div>
-
-                                            <h3 className="text-lg font-bold text-white mb-1 group-hover:text-indigo-300 transition-colors">
-                                                {app.name}
-                                            </h3>
-                                            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                                                {app.description}
-                                            </p>
+                                            <h3 className="text-lg font-bold text-white mb-1 group-hover:text-indigo-300">{app.name}</h3>
+                                            <p className="text-xs text-slate-400 line-clamp-2">{app.description}</p>
                                         </a>
                                     </div>
                                 );
                             })}
 
-                            {/* 网络搜索 Fallback */}
-                            {filteredApps.length === 0 && searchTerm.trim() !== "" && (
-                                <div className="col-span-full py-10 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
-                                    <div className="p-4 bg-slate-800/50 rounded-full mb-4">
-                                        <Search className="w-8 h-8 text-slate-500" />
-                                    </div>
-                                    <h3 className="text-xl font-medium text-white mb-2">未找到 "{searchTerm}"</h3>
-                                    <p className="text-slate-400 mb-6 max-w-md">尝试去广阔的互联网看看？</p>
-                                    <div className="flex gap-4">
-                                        <a href={`https://www.baidu.com/s?wd=${encodeURIComponent(searchTerm)}`} target="_blank" className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all hover:scale-105 shadow-lg shadow-blue-900/20">
-                                            百度搜索
-                                        </a>
-                                        <a href={`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`} target="_blank" className="flex items-center px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all hover:scale-105 border border-slate-600">
-                                            Google 搜索
-                                        </a>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* 未开启同步或未配置Token时的空状态提示 */}
-                            {(!isSyncEnabled || !ghToken) && allApps.length === 0 && (
-                                <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-500 animate-in fade-in">
-                                    <Cloud className="w-12 h-12 mb-4 opacity-20" />
-                                    <p>{!isSyncEnabled ? "云端同步已关闭" : "未配置 GitHub Token"}</p>
-                                    <p className="text-xs mt-1 opacity-60">
-                                        {!isSyncEnabled 
-                                            ? "点击右上角开关开启同步" 
-                                            : <button onClick={() => setIsSettingsModalOpen(true)} className="text-indigo-400 hover:underline">点击这里配置 Token</button>
-                                        }
-                                    </p>
+                            {/* 空状态 / 搜索无结果 */}
+                            {filteredApps.length === 0 && searchTerm && (
+                                <div className="col-span-full py-10 flex flex-col items-center text-center animate-fade-in">
+                                    <Search className="w-8 h-8 text-slate-500 mb-4"/>
+                                    <h3 className="text-xl font-medium text-white mb-2">本地未找到 "{searchTerm}"</h3>
+                                    <p className="text-slate-400">按 <strong className="text-indigo-400">Enter</strong> 直接跳转 {SEARCH_ENGINES[selectedEngine].name} 搜索</p>
                                 </div>
                             )}
 
-                            {/* 添加应用按钮 */}
-                            <button 
-                                onClick={() => { setEditingApp(null); setIsAppModalOpen(true); }}
-                                className="group relative block h-full min-h-[160px] border-2 border-dashed border-slate-700/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer"
-                            >
-                                <div className="p-3 rounded-full bg-slate-800 mb-3 text-slate-400 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-300">
-                                    <Plus className="w-6 h-6" />
+                            {(!isSyncEnabled || !ghToken) && allApps.length === 0 && (
+                                <div className="col-span-full flex flex-col items-center py-12 text-slate-500 animate-fade-in">
+                                    <Cloud className="w-12 h-12 mb-4 opacity-20" />
+                                    <p>{!isSyncEnabled ? "云端同步已关闭" : "未配置 GitHub Token"}</p>
+                                    {!isSyncEnabled ? <p className="text-xs mt-1">请点击右上角开启同步</p> : <button onClick={()=>setModals(m=>({...m, settings:true}))} className="text-xs mt-1 text-indigo-400 hover:underline">点击配置 Token</button>}
                                 </div>
-                                <h3 className="text-sm font-medium text-slate-300 group-hover:text-white">添加自定义应用</h3>
+                            )}
+
+                            {/* 添加按钮 */}
+                            <button onClick={() => { setEditingApp(null); setModals(m => ({...m, app: true})); }} className="group relative h-full min-h-[160px] border-2 border-dashed border-slate-700/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all">
+                                <div className="p-3 rounded-full bg-slate-800 mb-3 text-slate-400 group-hover:text-indigo-400 group-hover:scale-110 transition-all"><Plus className="w-6 h-6" /></div>
+                                <h3 className="text-sm font-medium text-slate-300 group-hover:text-white">添加应用</h3>
                             </button>
                         </main>
 
-                        <footer className="mt-20 text-center text-slate-600 text-sm">
-                            <p>© {new Date().getFullYear()} 个人工作台 (Shenzhen Edition)</p>
-                        </footer>
+                        <footer className="mt-20 text-center text-slate-600 text-sm"><p>© {new Date().getFullYear()} 专业工作台</p></footer>
                     </div>
 
-                    {/* 悬浮组件 */}
+                    {/* 挂件与弹窗 */}
                     <TodoWidget />
-                    {/* 复用 Modal，传入 editingApp 控制是否回显数据 */}
-                    <AppModal 
-                        isOpen={isAppModalOpen} 
-                        onClose={() => setIsAppModalOpen(false)} 
-                        onSave={handleSaveApp} 
-                        appToEdit={editingApp}
-                    />
-                    
-                    {/* 密码验证弹窗 */}
-                    <AuthModal 
-                        isOpen={isAuthModalOpen} 
-                        onClose={() => setIsAuthModalOpen(false)}
-                        onSuccess={pushToGitHub}
-                    />
-
-                    {/* 设置弹窗 (Token 配置) */}
-                    <SettingsModal 
-                        isOpen={isSettingsModalOpen}
-                        onClose={() => setIsSettingsModalOpen(false)}
-                        currentToken={ghToken}
-                        onSave={handleSaveToken}
-                    />
-                    
+                    <AppModal isOpen={modals.app} onClose={() => setModals(m => ({...m, app: false}))} onSave={handleSaveApp} appToEdit={editingApp} />
+                    <AuthModal isOpen={modals.auth} onClose={() => setModals(m => ({...m, auth: false}))} onSuccess={handleSyncUp} />
+                    <SettingsModal isOpen={modals.settings} onClose={() => setModals(m => ({...m, settings: false}))} currentToken={ghToken} onSave={handleSaveToken} />
                 </div>
             );
         }
