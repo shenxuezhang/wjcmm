@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的超级工作台 - 深圳定制版</title>
+    <title>我的应用工作台 - 自制版</title>
     
     <!-- 1. 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -56,26 +56,19 @@
         import { 
           Search, Plus, Settings, FileText, Database, 
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
-          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock
+          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock, Key
         } from 'lucide-react';
 
         // ==========================================
-        // 🔧 配置区域 (已硬编码)
+        // 🔧 配置区域 (Token 已移除，由设置面板管理)
         // ==========================================
         const GH_CONFIG = {
             owner: "shenxuezhang",
             repo: "wjcmm",
-            // 注意：在前端代码中硬编码 Token 有安全风险，仅建议在个人本地环境或私有环境使用
-            token: "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",
             path: "db.json"
         };
 
         const ADMIN_PASSWORD = "8888";
-
-        // ==========================================
-        // 💾 默认应用 (已清空，未连接云端时不显示多余应用)
-        // ==========================================
-        const DEFAULT_APPS = [];
 
         // 图标映射表
         const IconMap = {
@@ -86,14 +79,13 @@
         const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
         const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
 
-        // --- 组件: 天气小工具 (坐标已修改为深圳) ---
+        // --- 组件: 天气小工具 ---
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             
             useEffect(() => {
                 const fetchWeather = async () => {
                     try {
-                        // 深圳坐标: Latitude 22.5431, Longitude 114.0579
                         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current_weather=true");
                         const data = await res.json();
                         setWeather(data.current_weather);
@@ -249,6 +241,67 @@
             );
         };
 
+        // --- 组件: GitHub Token 设置弹窗 (新增) ---
+        const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
+            if (!isOpen) return null;
+            const [tokenInput, setTokenInput] = useState(currentToken || "");
+            const [showToken, setShowToken] = useState(false);
+
+            useEffect(() => {
+                setTokenInput(currentToken || "");
+            }, [currentToken]);
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                onSave(tokenInput.trim());
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
+                            <Settings className="w-5 h-5 mr-2 text-indigo-400" /> 系统设置
+                        </h2>
+                        
+                        <form onSubmit={handleSave} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">GitHub Token (密钥)</label>
+                                <div className="relative">
+                                    <input 
+                                        type={showToken ? "text" : "password"}
+                                        placeholder="ghp_xxxxxxxxxxxx"
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-3 pr-10 py-2 text-white outline-none focus:border-indigo-500 transition-colors"
+                                        value={tokenInput} 
+                                        onChange={e => setTokenInput(e.target.value)} 
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowToken(!showToken)}
+                                        className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
+                                    >
+                                        {showToken ? <span className="text-xs">隐藏</span> : <span className="text-xs">显示</span>}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2">
+                                    Token 将仅保存在您当前浏览器的本地缓存 (LocalStorage) 中，不会上传到任何服务器。
+                                    <br/>请确保 Token 拥有 Repo 读写权限。
+                                </p>
+                            </div>
+                            <div className="flex justify-end pt-2">
+                                <button type="submit" className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center">
+                                    <Check className="w-4 h-4 mr-1" /> 保存配置
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         // --- 组件: 添加应用弹窗 ---
         const AddAppModal = ({ isOpen, onClose, onAdd }) => {
             if (!isOpen) return null;
@@ -308,15 +361,20 @@
             const [time, setTime] = useState(new Date());
             const [isAddModalOpen, setIsAddModalOpen] = useState(false);
             
-            // Cloud Sync State
+            // Cloud Sync & Token State
             const [isSyncEnabled, setIsSyncEnabled] = useState(() => {
                 return localStorage.getItem('is_sync_enabled') === 'true';
             });
             const [syncLoading, setSyncLoading] = useState(false);
             const [syncStatus, setSyncStatus] = useState("");
+            const [ghToken, setGhToken] = useState(() => {
+                // 初始化时从本地存储读取 Token
+                return localStorage.getItem('gh_token') || "";
+            });
             
-            // Password Modal State
+            // Modals
             const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+            const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
             
             const searchInputRef = useRef(null);
 
@@ -329,7 +387,6 @@
             // Effect: 存储持久化
             useEffect(() => { 
                 if (isSyncEnabled) {
-                    // 仅做本地缓存备份，主要数据来源是云端
                     localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
                 }
             }, [customApps, isSyncEnabled]);
@@ -341,11 +398,10 @@
                 if (isSyncEnabled) {
                     fetchFromGitHub();
                 } else {
-                    // 关闭同步时清空显示
                     setCustomApps([]);
                     setSyncStatus("");
                 }
-            }, [isSyncEnabled]);
+            }, [isSyncEnabled]); // 注意：这里不依赖 ghToken，防止输入Token时反复触发，由用户手动或开关触发
 
             // Effect: 时钟
             useEffect(() => {
@@ -364,6 +420,7 @@
                         setSearchTerm("");
                         setIsAddModalOpen(false);
                         setIsAuthModalOpen(false);
+                        setIsSettingsModalOpen(false);
                         searchInputRef.current?.blur();
                     }
                 };
@@ -371,24 +428,42 @@
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, []);
 
-            // --- GitHub API 逻辑 (使用硬编码 GH_CONFIG) ---
+            // --- GitHub API 逻辑 ---
             
             const getApiUrl = () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`;
 
+            const handleSaveToken = (newToken) => {
+                setGhToken(newToken);
+                localStorage.setItem('gh_token', newToken); // 保存到本地
+                if (newToken && isSyncEnabled) {
+                    // 如果保存了Token且开启了同步，尝试拉取一次
+                    setTimeout(() => fetchFromGitHub(newToken), 100);
+                }
+            };
+
             // 1. 从云端拉取
-            const fetchFromGitHub = async () => {
+            const fetchFromGitHub = async (overrideToken = null) => {
+                const tokenToUse = overrideToken || ghToken;
+                
+                if (!tokenToUse) {
+                    setSyncStatus("请配置Token");
+                    return;
+                }
+
                 setSyncLoading(true);
                 setSyncStatus("同步中...");
                 
                 try {
                     const res = await fetch(getApiUrl(), {
                         headers: {
-                            'Authorization': `token ${GH_CONFIG.token}`,
+                            'Authorization': `token ${tokenToUse}`,
                             'Accept': 'application/vnd.github.v3+json'
                         }
                     });
 
-                    if (res.status === 404) {
+                    if (res.status === 401) {
+                        setSyncStatus("Token无效/过期");
+                    } else if (res.status === 404) {
                         setSyncStatus("文件未找到 (请上传)");
                         setCustomApps([]);
                     } else if (!res.ok) {
@@ -401,7 +476,6 @@
                         if (Array.isArray(apps)) {
                             setCustomApps(apps);
                             setSyncStatus("同步成功");
-                            // 3秒后清除成功提示
                             setTimeout(() => setSyncStatus(""), 3000);
                         } else {
                             setSyncStatus("数据格式错误");
@@ -417,6 +491,12 @@
 
             // 2. 上传到云端 (被 AuthModal 调用)
             const pushToGitHub = async () => {
+                if (!ghToken) {
+                    setSyncStatus("请配置Token");
+                    setIsSettingsModalOpen(true);
+                    return;
+                }
+
                 setSyncLoading(true);
                 setSyncStatus("正在上传...");
 
@@ -428,7 +508,7 @@
                     try {
                         const getRes = await fetch(url, {
                             headers: { 
-                                'Authorization': `token ${GH_CONFIG.token}`,
+                                'Authorization': `token ${ghToken}`,
                                 'Accept': 'application/vnd.github.v3+json'
                             }
                         });
@@ -449,13 +529,14 @@
                     const putRes = await fetch(url, {
                         method: 'PUT',
                         headers: {
-                            'Authorization': `token ${GH_CONFIG.token}`,
+                            'Authorization': `token ${ghToken}`,
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify(body)
                     });
 
                     if (!putRes.ok) {
+                        if (putRes.status === 401) throw new Error("Token无效");
                         throw new Error("Upload failed");
                     }
 
@@ -464,7 +545,7 @@
 
                 } catch (error) {
                     console.error(error);
-                    setSyncStatus("上传失败");
+                    setSyncStatus(error.message === "Token无效" ? "Token无效" : "上传失败");
                 } finally {
                     setSyncLoading(false);
                 }
@@ -534,10 +615,19 @@
                         
                         {/* 状态文字 */}
                         {syncStatus && (
-                            <span className={`text-xs font-medium animate-pulse ${syncStatus.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>
+                            <span className={`text-xs font-medium animate-pulse ${syncStatus.includes('失败') || syncStatus.includes('无效') || syncStatus.includes('配置') ? 'text-red-400' : 'text-green-400'}`}>
                                 {syncStatus}
                             </span>
                         )}
+
+                        {/* 设置按钮 (新增) */}
+                        <button 
+                            onClick={() => setIsSettingsModalOpen(true)}
+                            className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${!ghToken ? 'text-yellow-400 animate-pulse' : 'text-slate-400'}`}
+                            title="配置 GitHub Token"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
 
                         {/* 上传按钮 (触发密码弹窗) */}
                         {isSyncEnabled && (
@@ -593,7 +683,7 @@
                                 <WeatherWidget />
                             </div>
 
-                            {/* 搜索框 (未开启同步或无应用时隐藏分类，但保留搜索框) */}
+                            {/* 搜索框 */}
                             {allApps.length > 0 && (
                                 <>
                                 <div className="relative w-full max-w-xl group z-10">
@@ -708,12 +798,17 @@
                                 </div>
                             )}
                             
-                            {/* 未开启同步时的空状态提示 */}
-                            {!isSyncEnabled && allApps.length === 0 && (
+                            {/* 未开启同步或未配置Token时的空状态提示 */}
+                            {(!isSyncEnabled || !ghToken) && allApps.length === 0 && (
                                 <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-500 animate-in fade-in">
                                     <Cloud className="w-12 h-12 mb-4 opacity-20" />
-                                    <p>云端同步已关闭</p>
-                                    <p className="text-xs mt-1 opacity-60">点击右上角开关开启同步，或手动添加应用</p>
+                                    <p>{!isSyncEnabled ? "云端同步已关闭" : "未配置 GitHub Token"}</p>
+                                    <p className="text-xs mt-1 opacity-60">
+                                        {!isSyncEnabled 
+                                            ? "点击右上角开关开启同步" 
+                                            : <button onClick={() => setIsSettingsModalOpen(true)} className="text-indigo-400 hover:underline">点击这里配置 Token</button>
+                                        }
+                                    </p>
                                 </div>
                             )}
 
@@ -744,6 +839,14 @@
                         onClose={() => setIsAuthModalOpen(false)}
                         onSuccess={pushToGitHub}
                     />
+
+                    {/* 设置弹窗 (Token 配置) */}
+                    <SettingsModal 
+                        isOpen={isSettingsModalOpen}
+                        onClose={() => setIsSettingsModalOpen(false)}
+                        currentToken={ghToken}
+                        onSave={handleSaveToken}
+                    />
                     
                 </div>
             );
@@ -754,4 +857,3 @@
     </script>
 </body>
 </html>
-
