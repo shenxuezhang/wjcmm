@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的超级工作台</title>
+    <title>我的超级工作台 - 深圳定制版</title>
     
     <!-- 1. 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -36,6 +36,15 @@
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        /* 开关动画样式 */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #68D391;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #68D391;
+        }
     </style>
 </head>
 <body>
@@ -45,59 +54,47 @@
         import React, { useState, useEffect, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
-          Search, ExternalLink, Plus, Settings, FileText, Database, 
+          Search, Plus, Settings, FileText, Database, 
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, 
-          X, Save, Command, Globe
+          X, Command, Globe, RefreshCw, Upload, Check, AlertCircle, Power, Lock
         } from 'lucide-react';
 
         // ==========================================
-        // 💾 默认内置应用 (ID < 1000 为内置)
+        // 🔧 配置区域 (已硬编码)
         // ==========================================
-        const DEFAULT_APPS = [
-          {
-            id: 1,
-            name: "批量重命名工具",
-            url: "https://shenxuezhang.github.io/wjcmm/plwjcmm.html", 
-            description: "高效、快速地对文件进行批量重命名和整理", 
-            category: "工具", 
-            icon: "Settings", 
-            color: "from-green-500 to-teal-400" 
-          },
-          {
-            id: 2,
-            name: "Excel 表格翻译导出",
-            url: "https://shenxuezhang.github.io/wjcmm/exclefyq.html",
-            description: "一键翻译 Excel 表格内容并导出，支持多种语言",
-            category: "工具", 
-            icon: "FileText",
-            color: "from-yellow-500 to-orange-500"
-          },
-          {
-            id: 3,
-            name: "Excel与文件检索",
-            url: "https://shenxuezhang.github.io/wjcmm/excel-name-checker.html",
-            description: "快速检索和检查 Excel 文件名，方便文档管理",
-            category: "工具", 
-            icon: "Database",
-            color: "from-purple-600 to-pink-500"
-          },
-        ];
+        const GH_CONFIG = {
+            owner: "shenxuezhang",
+            repo: "wjcmm",
+            // 注意：在前端代码中硬编码 Token 有安全风险，仅建议在个人本地环境或私有环境使用
+            token: "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",
+            path: "db.json"
+        };
 
-        // 图标映射表，方便字符串转组件
+        const ADMIN_PASSWORD = "8888";
+
+        // ==========================================
+        // 💾 默认应用 (已清空，未连接云端时不显示多余应用)
+        // ==========================================
+        const DEFAULT_APPS = [];
+
+        // 图标映射表
         const IconMap = {
             Settings, FileText, Database, Globe, Cloud, Command
         };
 
-        // --- 组件: 天气小工具 ---
+        // --- 辅助函数：Base64 编码/解码 (解决中文乱码问题) ---
+        const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
+        const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
+
+        // --- 组件: 天气小工具 (坐标已修改为深圳) ---
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             
             useEffect(() => {
-                // 默认使用北京坐标，你可以根据需要修改 latitude 和 longitude
-                // 也可以使用 navigator.geolocation 获取当前位置
                 const fetchWeather = async () => {
                     try {
-                        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074&current_weather=true");
+                        // 深圳坐标: Latitude 22.5431, Longitude 114.0579
+                        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current_weather=true");
                         const data = await res.json();
                         setWeather(data.current_weather);
                     } catch (e) {
@@ -105,14 +102,12 @@
                     }
                 };
                 fetchWeather();
-                // 每30分钟刷新一次
                 const interval = setInterval(fetchWeather, 1800000); 
                 return () => clearInterval(interval);
             }, []);
 
             if (!weather) return <span className="text-slate-500 text-xs">加载天气...</span>;
 
-            // 简单的天气代码映射
             let WeatherIcon = Sun;
             let text = "晴朗";
             if (weather.weathercode > 3) { WeatherIcon = Cloud; text = "多云"; }
@@ -122,7 +117,7 @@
                 <div className="flex items-center space-x-2 text-slate-300 bg-slate-800/40 px-3 py-1 rounded-full border border-slate-700/50 mt-2">
                     <WeatherIcon className="w-4 h-4 text-yellow-400" />
                     <span className="text-sm font-medium">{weather.temperature}°C</span>
-                    <span className="text-xs text-slate-500 hidden sm:inline"> | {text}</span>
+                    <span className="text-xs text-slate-500 hidden sm:inline"> | {text} (深圳)</span>
                 </div>
             );
         };
@@ -203,6 +198,57 @@
             );
         };
 
+        // --- 组件: 管理员密码验证弹窗 ---
+        const AuthModal = ({ isOpen, onClose, onSuccess }) => {
+            if (!isOpen) return null;
+            const [password, setPassword] = useState("");
+            const [error, setError] = useState(false);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (password === ADMIN_PASSWORD) {
+                    onSuccess();
+                    onClose();
+                    setPassword("");
+                    setError(false);
+                } else {
+                    setError(true);
+                    setPassword("");
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-sm p-6 shadow-2xl relative">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center">
+                            <Lock className="w-5 h-5 mr-2 text-yellow-400" /> 管理员验证
+                        </h2>
+                        <p className="text-sm text-slate-400 mb-4">上传数据会覆盖云端文件，请输入管理员密码以继续。</p>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <input 
+                                    autoFocus
+                                    type="password" 
+                                    placeholder="请输入密码"
+                                    className={`w-full bg-slate-900 border ${error ? 'border-red-500' : 'border-slate-600'} rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500 transition-colors`}
+                                    value={password} 
+                                    onChange={e => {setPassword(e.target.value); setError(false);}} 
+                                />
+                                {error && <p className="text-red-400 text-xs mt-1">密码错误</p>}
+                            </div>
+                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium transition-colors">
+                                确认上传
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         // --- 组件: 添加应用弹窗 ---
         const AddAppModal = ({ isOpen, onClose, onAdd }) => {
             if (!isOpen) return null;
@@ -252,10 +298,7 @@
         // --- 主程序 ---
         function AppLauncher() {
             // State
-            const [customApps, setCustomApps] = useState(() => {
-                const saved = localStorage.getItem('my_custom_apps');
-                return saved ? JSON.parse(saved) : [];
-            });
+            const [customApps, setCustomApps] = useState([]);
             const [pinnedIds, setPinnedIds] = useState(() => {
                 const saved = localStorage.getItem('my_pinned_apps');
                 return saved ? JSON.parse(saved) : [];
@@ -265,17 +308,44 @@
             const [time, setTime] = useState(new Date());
             const [isAddModalOpen, setIsAddModalOpen] = useState(false);
             
+            // Cloud Sync State
+            const [isSyncEnabled, setIsSyncEnabled] = useState(() => {
+                return localStorage.getItem('is_sync_enabled') === 'true';
+            });
+            const [syncLoading, setSyncLoading] = useState(false);
+            const [syncStatus, setSyncStatus] = useState("");
+            
+            // Password Modal State
+            const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+            
             const searchInputRef = useRef(null);
 
-            // 合并所有应用
-            const allApps = [...DEFAULT_APPS, ...customApps];
+            // 当不开启同步时，应用列表为空；开启时，从 customApps 读取
+            const allApps = isSyncEnabled ? [...customApps] : [];
 
             // 派生数据：分类
             const categories = ["全部", ...new Set(allApps.map(app => app.category))];
 
             // Effect: 存储持久化
-            useEffect(() => { localStorage.setItem('my_custom_apps', JSON.stringify(customApps)); }, [customApps]);
+            useEffect(() => { 
+                if (isSyncEnabled) {
+                    // 仅做本地缓存备份，主要数据来源是云端
+                    localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
+                }
+            }, [customApps, isSyncEnabled]);
+            
             useEffect(() => { localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds)); }, [pinnedIds]);
+            
+            useEffect(() => { 
+                localStorage.setItem('is_sync_enabled', isSyncEnabled); 
+                if (isSyncEnabled) {
+                    fetchFromGitHub();
+                } else {
+                    // 关闭同步时清空显示
+                    setCustomApps([]);
+                    setSyncStatus("");
+                }
+            }, [isSyncEnabled]);
 
             // Effect: 时钟
             useEffect(() => {
@@ -286,21 +356,120 @@
             // Effect: 键盘快捷键
             useEffect(() => {
                 const handleKeyDown = (e) => {
-                    // 按下 "/" 聚焦搜索框
                     if (e.key === '/' && document.activeElement !== searchInputRef.current) {
                         e.preventDefault();
                         searchInputRef.current?.focus();
                     }
-                    // 按下 "Escape" 清空搜索 或 关闭弹窗
                     if (e.key === 'Escape') {
                         setSearchTerm("");
                         setIsAddModalOpen(false);
+                        setIsAuthModalOpen(false);
                         searchInputRef.current?.blur();
                     }
                 };
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, []);
+
+            // --- GitHub API 逻辑 (使用硬编码 GH_CONFIG) ---
+            
+            const getApiUrl = () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`;
+
+            // 1. 从云端拉取
+            const fetchFromGitHub = async () => {
+                setSyncLoading(true);
+                setSyncStatus("同步中...");
+                
+                try {
+                    const res = await fetch(getApiUrl(), {
+                        headers: {
+                            'Authorization': `token ${GH_CONFIG.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (res.status === 404) {
+                        setSyncStatus("文件未找到 (请上传)");
+                        setCustomApps([]);
+                    } else if (!res.ok) {
+                        throw new Error(`Err ${res.status}`);
+                    } else {
+                        const data = await res.json();
+                        const contentStr = fromBase64(data.content);
+                        const apps = JSON.parse(contentStr);
+                        
+                        if (Array.isArray(apps)) {
+                            setCustomApps(apps);
+                            setSyncStatus("同步成功");
+                            // 3秒后清除成功提示
+                            setTimeout(() => setSyncStatus(""), 3000);
+                        } else {
+                            setSyncStatus("数据格式错误");
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                    setSyncStatus("同步失败");
+                } finally {
+                    setSyncLoading(false);
+                }
+            };
+
+            // 2. 上传到云端 (被 AuthModal 调用)
+            const pushToGitHub = async () => {
+                setSyncLoading(true);
+                setSyncStatus("正在上传...");
+
+                try {
+                    const url = getApiUrl();
+                    
+                    // 获取 SHA
+                    let sha = null;
+                    try {
+                        const getRes = await fetch(url, {
+                            headers: { 
+                                'Authorization': `token ${GH_CONFIG.token}`,
+                                'Accept': 'application/vnd.github.v3+json'
+                            }
+                        });
+                        if (getRes.ok) {
+                            const getData = await getRes.json();
+                            sha = getData.sha;
+                        }
+                    } catch (e) { }
+
+                    // 更新
+                    const content = toBase64(JSON.stringify(customApps, null, 2));
+                    const body = {
+                        message: `Update apps via Dashboard - ${new Date().toLocaleString()}`,
+                        content: content,
+                        ...(sha && { sha })
+                    };
+
+                    const putRes = await fetch(url, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${GH_CONFIG.token}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (!putRes.ok) {
+                        throw new Error("Upload failed");
+                    }
+
+                    setSyncStatus("✅ 上传成功");
+                    setTimeout(() => setSyncStatus(""), 3000);
+
+                } catch (error) {
+                    console.error(error);
+                    setSyncStatus("上传失败");
+                } finally {
+                    setSyncLoading(false);
+                }
+            };
+
 
             // 功能函数
             const togglePin = (e, id) => {
@@ -315,7 +484,8 @@
 
             const deleteApp = (e, id) => {
                 e.preventDefault();
-                if(confirm("确定要删除这个应用吗？")) {
+                e.stopPropagation(); // 防止跳转
+                if(confirm("确定要删除这个应用吗？删除后请点击右上角'上传云端'保存。")) {
                     setCustomApps(customApps.filter(app => app.id !== id));
                     setPinnedIds(pinnedIds.filter(pid => pid !== id));
                 }
@@ -325,7 +495,7 @@
                 setCustomApps([...customApps, newApp]);
             };
 
-            // 过滤与排序逻辑 (置顶优先)
+            // 过滤与排序逻辑
             const filteredApps = allApps
                 .filter(app => {
                     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -341,7 +511,6 @@
                     return 0;
                 });
 
-            // 获取问候语
             const getGreeting = () => {
                 const hour = time.getHours();
                 if (hour < 6) return "夜深了";
@@ -358,6 +527,52 @@
                     <div className="fixed inset-0 overflow-hidden -z-10 pointer-events-none">
                         <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-indigo-900/20 rounded-full blur-[120px] animate-pulse"></div>
                         <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[120px]" style={{animationDelay: '1s'}}></div>
+                    </div>
+
+                    {/* 右上角控制区：云端同步开关与状态 */}
+                    <div className="absolute top-4 right-4 z-50 flex items-center space-x-3 bg-slate-800/80 backdrop-blur-md p-2 rounded-xl border border-slate-700 shadow-xl">
+                        
+                        {/* 状态文字 */}
+                        {syncStatus && (
+                            <span className={`text-xs font-medium animate-pulse ${syncStatus.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>
+                                {syncStatus}
+                            </span>
+                        )}
+
+                        {/* 上传按钮 (触发密码弹窗) */}
+                        {isSyncEnabled && (
+                            <button 
+                                onClick={() => setIsAuthModalOpen(true)}
+                                disabled={syncLoading}
+                                className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
+                                title="需管理员密码"
+                            >
+                                {syncLoading ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                                <span>上传云端</span>
+                            </button>
+                        )}
+
+                        {/* 分隔线 */}
+                        <div className="w-px h-4 bg-slate-600 mx-1"></div>
+
+                        {/* 开关 Toggle */}
+                        <div className="flex items-center">
+                            <label htmlFor="sync-toggle" className="flex items-center cursor-pointer relative">
+                                <input 
+                                    type="checkbox" 
+                                    id="sync-toggle" 
+                                    className="sr-only" 
+                                    checked={isSyncEnabled}
+                                    onChange={() => setIsSyncEnabled(!isSyncEnabled)}
+                                />
+                                <div className={`w-10 h-6 rounded-full transition-colors duration-200 ease-in-out border-2 border-transparent ${isSyncEnabled ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                                <div className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ease-in-out transform ${isSyncEnabled ? 'translate-x-4' : 'translate-x-0'}`}>
+                                    <div className="flex items-center justify-center h-full w-full text-[10px] font-bold text-slate-500">
+                                        {isSyncEnabled ? <Cloud className="w-3 h-3 text-green-500"/> : <Power className="w-3 h-3"/>}
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-32">
@@ -378,59 +593,62 @@
                                 <WeatherWidget />
                             </div>
 
-                            {/* 搜索框 */}
-                            <div className="relative w-full max-w-xl group z-10">
-                                <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
-                                <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 p-2 shadow-2xl backdrop-blur-sm">
-                                    <Search className="w-5 h-5 text-slate-500 ml-3" />
-                                    <input
-                                        ref={searchInputRef}
-                                        type="text"
-                                        placeholder="搜索应用... (按 '/' 聚焦)"
-                                        className="w-full bg-transparent border-none focus:ring-0 text-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                    />
-                                    {searchTerm ? (
-                                        <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white">
-                                            <span className="text-xs border border-slate-600 rounded px-1.5 py-0.5">ESC</span>
-                                        </button>
-                                    ) : (
-                                        <div className="px-3 text-slate-600 hidden sm:block">
-                                            <Command className="w-4 h-4 inline mr-1 opacity-50" />
-                                            <span className="text-xs">/</span>
-                                        </div>
-                                    )}
+                            {/* 搜索框 (未开启同步或无应用时隐藏分类，但保留搜索框) */}
+                            {allApps.length > 0 && (
+                                <>
+                                <div className="relative w-full max-w-xl group z-10">
+                                    <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl opacity-30 group-hover:opacity-100 transition duration-500 blur"></div>
+                                    <div className="relative flex items-center bg-slate-900/90 rounded-xl border border-slate-700/50 p-2 shadow-2xl backdrop-blur-sm">
+                                        <Search className="w-5 h-5 text-slate-500 ml-3" />
+                                        <input
+                                            ref={searchInputRef}
+                                            type="text"
+                                            placeholder="搜索应用... (按 '/' 聚焦)"
+                                            className="w-full bg-transparent border-none focus:ring-0 text-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                        {searchTerm ? (
+                                            <button onClick={() => setSearchTerm("")} className="px-3 text-slate-500 hover:text-white">
+                                                <span className="text-xs border border-slate-600 rounded px-1.5 py-0.5">ESC</span>
+                                            </button>
+                                        ) : (
+                                            <div className="px-3 text-slate-600 hidden sm:block">
+                                                <Command className="w-4 h-4 inline mr-1 opacity-50" />
+                                                <span className="text-xs">/</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* 分类 Filter */}
-                            <div className="flex flex-wrap justify-center gap-2">
-                                {categories.map(cat => (
-                                    <button
-                                        key={cat}
-                                        onClick={() => setSelectedCategory(cat)}
-                                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                                            selectedCategory === cat
-                                                ? "bg-white text-slate-900 shadow-lg shadow-white/10"
-                                                : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white border border-transparent hover:border-slate-600"
-                                        }`}
-                                    >
-                                        {cat}
-                                    </button>
-                                ))}
-                            </div>
+                                {/* 分类 Filter */}
+                                <div className="flex flex-wrap justify-center gap-2">
+                                    {categories.map(cat => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setSelectedCategory(cat)}
+                                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                                                selectedCategory === cat
+                                                    ? "bg-white text-slate-900 shadow-lg shadow-white/10"
+                                                    : "bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-white border border-transparent hover:border-slate-600"
+                                            }`}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </div>
+                                </>
+                            )}
                         </header>
 
                         {/* 应用列表 Grid */}
                         <main className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                             {filteredApps.map((app) => {
-                                // 动态获取图标组件，如果没有匹配则使用 Globe
                                 const IconComponent = IconMap[app.icon] || Globe;
                                 const isPinned = pinnedIds.includes(app.id);
 
                                 return (
-                                    <div key={app.id} className="group relative block h-full">
+                                    <div key={app.id} className="group relative block h-full animate-in fade-in zoom-in duration-300">
                                         <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-0 group-hover:opacity-75 transition duration-500 blur-sm"></div>
                                         
                                         <a href={app.url} target="_blank" rel="noopener noreferrer" 
@@ -442,7 +660,6 @@
                                                     <IconComponent className="w-5 h-5" />
                                                 </div>
                                                 <div className="flex space-x-1">
-                                                    {/* 置顶按钮 */}
                                                     <button 
                                                         onClick={(e) => togglePin(e, app.id)}
                                                         className={`p-1.5 rounded-md transition-colors ${isPinned ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700'}`}
@@ -450,16 +667,14 @@
                                                     >
                                                         <Pin className={`w-4 h-4 ${isPinned ? 'fill-current' : ''}`} />
                                                     </button>
-                                                    {/* 删除按钮 (仅限自定义应用) */}
-                                                    {app.id > 1000 && (
-                                                        <button 
-                                                            onClick={(e) => deleteApp(e, app.id)}
-                                                            className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                                                            title="删除"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    )}
+                                                    {/* 删除按钮 */}
+                                                    <button 
+                                                        onClick={(e) => deleteApp(e, app.id)}
+                                                        className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                                                        title="删除 (点击后需手动上传云端)"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -474,15 +689,14 @@
                                 );
                             })}
 
-                            {/* 网络搜索 Fallback (当搜索结果为空时显示) */}
+                            {/* 网络搜索 Fallback */}
                             {filteredApps.length === 0 && searchTerm.trim() !== "" && (
                                 <div className="col-span-full py-10 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
                                     <div className="p-4 bg-slate-800/50 rounded-full mb-4">
                                         <Search className="w-8 h-8 text-slate-500" />
                                     </div>
                                     <h3 className="text-xl font-medium text-white mb-2">未找到 "{searchTerm}"</h3>
-                                    <p className="text-slate-400 mb-6 max-w-md">我的本地数据库里没有这个应用，尝试去广阔的互联网看看？</p>
-                                    
+                                    <p className="text-slate-400 mb-6 max-w-md">尝试去广阔的互联网看看？</p>
                                     <div className="flex gap-4">
                                         <a href={`https://www.baidu.com/s?wd=${encodeURIComponent(searchTerm)}`} target="_blank" className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all hover:scale-105 shadow-lg shadow-blue-900/20">
                                             百度搜索
@@ -491,6 +705,15 @@
                                             Google 搜索
                                         </a>
                                     </div>
+                                </div>
+                            )}
+                            
+                            {/* 未开启同步时的空状态提示 */}
+                            {!isSyncEnabled && allApps.length === 0 && (
+                                <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-500 animate-in fade-in">
+                                    <Cloud className="w-12 h-12 mb-4 opacity-20" />
+                                    <p>云端同步已关闭</p>
+                                    <p className="text-xs mt-1 opacity-60">点击右上角开关开启同步，或手动添加应用</p>
                                 </div>
                             )}
 
@@ -507,13 +730,20 @@
                         </main>
 
                         <footer className="mt-20 text-center text-slate-600 text-sm">
-                            <p>© {new Date().getFullYear()} 个人工作台 </p>
+                            <p>© {new Date().getFullYear()} 个人工作台 (Shenzhen Edition)</p>
                         </footer>
                     </div>
 
                     {/* 悬浮组件 */}
                     <TodoWidget />
                     <AddAppModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddApp} />
+                    
+                    {/* 密码验证弹窗 */}
+                    <AuthModal 
+                        isOpen={isAuthModalOpen} 
+                        onClose={() => setIsAuthModalOpen(false)}
+                        onSuccess={pushToGitHub}
+                    />
                     
                 </div>
             );
@@ -523,5 +753,4 @@
         root.render(<AppLauncher />);
     </script>
 </body>
-
 </html>
