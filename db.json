@@ -43,5 +43,15 @@
     "type": "placeholder",
     "url": "",
     "description": ""
+  },
+  {
+    "name": "PDF 页面智能处理器",
+    "url": "https://shenxuezhang.github.io/wjcmm/smart-pdf.html",
+    "description": "可视化预览 · 智能高效 · 批量队列 · 图片导出",
+    "category": "文件处理工具",
+    "customIconUrl": "https://raw.githubusercontent.com/shenxuezhang/wjcmm/main/icons/1765908289838_PDF 页面智能处理器.webp",
+    "id": 1765908176053,
+    "icon": "Globe",
+    "color": "from-blue-500 to-cyan-500"
   }
 ]
