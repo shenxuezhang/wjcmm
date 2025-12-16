@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PDF 智能处理 - Pro版</title>
+    
+    <!-- 1. 基础库引入 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PDF 修改库 (结构处理) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    
+    <!-- PDF 渲染库 (用于预览和导出图片) v2.6.347 稳定版 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+    </script>
+    
+    <!-- 文件保存库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- ZIP 打包库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- 配置 Tailwind -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        bg: { light: '#f8fafc', dark: '#0f172a' },
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out forwards',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { transition: background-color 0.3s, color 0.3s; }
+        .no-select { -webkit-touch-callout: none; user-select: none; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        .drag-over { border-color: #6366f1 !important; background-color: rgba(99, 102, 241, 0.05) !important; }
+        .progress-bar { transition: width 0.3s ease-in-out; }
+        
+        /* 预览相关样式 */
+        .page-thumb { transition: all 0.2s; position: relative; cursor: pointer; }
+        .page-thumb.deleted { opacity: 0.5; filter: grayscale(100%); transform: scale(0.95); }
+        .page-thumb.deleted::after {
+            content: '×';
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 4rem; color: #ef4444; font-weight: bold; pointer-events: none;
+            text-shadow: 0 2px 4px rgba(255,255,255,0.8);
+        }
+        .page-thumb:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .thumb-img { width: 100%; height: auto; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 min-h-screen selection:bg-indigo-500/30 font-sans flex items-center justify-center relative py-6 px-4">
+
+    <!-- 背景装饰 -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+        <div class="absolute top-[10%] left-[20%] w-[30%] h-[30%] bg-indigo-500/10 rounded-full blur-[100px] animate-pulse-slow"></div>
+        <div class="absolute bottom-[20%] right-[20%] w-[35%] h-[35%] bg-blue-500/10 rounded-full blur-[100px]" style="animation-delay: 1s;"></div>
+    </div>
+
+    <!-- 主卡片容器 -->
+    <div class="w-full max-w-2xl animate-fade-in relative z-10">
+        
+        <!-- 顶部功能栏 -->
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center space-x-2">
+                <div class="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/30 flex-shrink-0">
+                    <i data-lucide="layers" class="text-white w-6 h-6"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <h1 class="text-xl font-bold tracking-tight text-slate-800 dark:text-white truncate">PDF 页面智能处理器</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 truncate">可视化预览 · 智能高效 · 批量队列 · 图片导出</p>
+                </div>
+            </div>
+            
+            <button id="theme-toggle" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all flex-shrink-0 ml-2">
+                <i data-lucide="moon" class="w-5 h-5 dark:hidden"></i>
+                <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+            </button>
+        </div>
+
+        <!-- 核心操作区 -->
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm">
+            
+            <div class="p-6 md:p-8">
+                
+                <!-- 1. 控制面板 -->
+                <div class="mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                    
+                    <!-- 模式选择 -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">处理模式</label>
+                        <select id="mode-select" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5">
+                            <option value="keep-odd">保留奇数页 (PDF)</option>
+                            <option value="keep-even">保留偶数页 (PDF)</option>
+                            <option value="custom">自定义保留范围 (PDF)</option>
+                            <option value="export-img">✨ 导出为图片 (解决条码不清晰)</option>
+                        </select>
+                    </div>
+
+                    <!-- 自定义 PDF 范围输入 -->
+                    <div id="custom-range-box" class="hidden pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">输入要保留的页码</label>
+                        <input type="text" id="custom-range-input" placeholder="例如: 1-3, 5, 7-10" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-sm rounded-lg block w-full p-2.5">
+                        <p class="text-[10px] text-slate-400 mt-1">提示：点击下方文件列表中的 <i data-lucide="eye" class="w-3 h-3 inline"></i> 图标可进行可视化点选删除</p>
+                    </div>
+
+                    <!-- 图片导出设置面板 -->
+                    <div id="image-settings-panel" class="hidden pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 格式选择 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">图片格式</label>
+                            <select id="img-format-select" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-sm rounded-lg block w-full p-2.5">
+                                <option value="image/png">PNG (无损推荐，条码最清晰)</option>
+                                <option value="image/jpeg">JPEG (体积小)</option>
+                                <option value="image/webp">WebP (高效)</option>
+                            </select>
+                        </div>
+
+                        <!-- 关键修改：分辨率控制 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
+                                PNG 导出倍数 (分辨率)
+                                <span class="text-[10px] text-indigo-500 ml-1">*建议 4.0 以上以确保条码清晰</span>
+                            </label>
+                            <div class="flex items-center">
+                                <!-- ID 修改为 png-scale-input，默认值设为 4.0 (300DPI) -->
+                                <input type="number" id="png-scale-input" value="4.0" min="1.0" max="10.0" step="0.5" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-sm rounded-lg block w-full p-2.5">
+                            </div>
+                        </div>
+
+                        <!-- JPEG/WebP 质量控制 -->
+                        <div id="img-quality-box" class="hidden md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">压缩质量 (0.1 - 1.0)</label>
+                            <input type="range" id="img-quality-range" min="0.1" max="1.0" step="0.1" value="0.9" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700">
+                            <div class="text-right text-xs text-slate-500 mt-1"><span id="quality-val">0.9</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 拖拽上传区域 -->
+                <div id="drop-zone" class="group relative min-h-[140px] border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-700/30 transition-all cursor-pointer">
+                    <input type="file" id="file-input" accept=".pdf" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20">
+                    <div class="flex flex-col items-center pointer-events-none">
+                        <div class="p-3 rounded-full bg-slate-100 dark:bg-slate-700 mb-3 text-slate-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
+                            <i data-lucide="folder-plus" class="w-8 h-8"></i>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
+                            点击添加或拖拽 multiple PDF 文件
+                        </span>
+                        <span class="text-xs text-slate-400 mt-1">支持批量队列处理</span>
+                    </div>
+                </div>
+
+                <!-- 3. 文件队列列表 -->
+                <div id="file-list-container" class="mt-4 hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">处理队列 (<span id="queue-count">0</span>)</h3>
+                        <button id="clear-queue-btn" class="text-xs text-red-500 hover:text-red-600 hover:underline">清空队列</button>
+                    </div>
+                    <div id="file-list" class="space-y-2 max-h-[200px] overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 4. 进度条 -->
+                <div id="progress-container" class="mt-6 hidden">
+                    <div class="flex justify-between mb-1">
+                        <span id="progress-text" class="text-xs font-medium text-indigo-700 dark:text-indigo-400">准备中...</span>
+                        <span id="progress-percent" class="text-xs font-medium text-indigo-700 dark:text-indigo-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2.5 dark:bg-slate-700">
+                        <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full progress-bar" style="width: 0%"></div>
+                    </div>
+                    <p id="memory-warning" class="hidden text-[10px] text-orange-500 mt-1 text-center animate-pulse">正在进行高分辨率渲染，请勿关闭页面...</p>
+                </div>
+
+                <!-- 5. 结果与下载区域 -->
+                <div id="result-container" class="hidden mt-6 p-5 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-800/30 animate-fade-in">
+                    <div class="flex items-start mb-4">
+                        <div class="p-2 bg-emerald-100 dark:bg-emerald-800/30 rounded-lg mr-3">
+                            <i data-lucide="check-check" class="w-5 h-5 text-emerald-600 dark:text-emerald-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-emerald-900 dark:text-emerald-100">处理完成</h3>
+                            <div id="report-content" class="text-xs text-emerald-700 dark:text-emerald-300 mt-1 space-y-1"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 mt-4">
+                        <button id="download-single-btn" class="bg-white hover:bg-emerald-50 border border-emerald-200 dark:bg-emerald-800/20 dark:hover:bg-emerald-800/40 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-300 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center">
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> 
+                            逐个下载
+                        </button>
+                        <button id="download-zip-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-sm font-medium shadow-md shadow-emerald-500/20 transition-colors flex justify-center items-center">
+                            <i data-lucide="package" class="w-4 h-4 mr-2"></i> 
+                            打包下载 (ZIP)
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-center text-emerald-600/60 dark:text-emerald-400/50 mt-2">逐个下载时请允许浏览器弹出多个文件</p>
+                </div>
+
+                <!-- 6. 状态区域 -->
+                <div id="status-area" class="mt-4 min-h-[20px] text-center text-sm transition-all duration-300 opacity-0"></div>
+
+                <div class="mt-6 flex space-x-3">
+                    <button id="process-btn" disabled class="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium shadow-lg shadow-indigo-500/30 disabled:shadow-none transition-all flex justify-center items-center group">
+                        <span id="btn-text">开始批量处理</span>
+                        <i id="btn-icon" data-lucide="play" class="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform"></i>
+                        <i id="btn-spinner" data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin hidden"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 底部装饰条 -->
+            <div class="bg-slate-50 dark:bg-slate-900/50 px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
+                <div class="flex items-center">
+                    <i data-lucide="shield-check" class="w-3 h-3 mr-1.5 text-green-500"></i>
+                    <span>纯前端处理</span>
+                </div>
+                <div class="flex items-center">
+                    <i data-lucide="cpu" class="w-3 h-3 mr-1.5 text-blue-500"></i>
+                    <span>Pro+ v4.1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. 可视化预览模态框 -->
+    <div id="preview-modal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-800 text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-5xl h-[90vh] flex flex-col">
+                    <div class="bg-white dark:bg-slate-800 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
+                        <div>
+                            <h3 class="text-lg font-bold leading-6 text-slate-900 dark:text-white flex items-center">
+                                <i data-lucide="eye" class="w-5 h-5 mr-2 text-indigo-500"></i>
+                                可视化页面筛选
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-1">点击页面以 删除/恢复</p>
+                        </div>
+                        <button id="close-modal-btn" class="text-slate-400 hover:text-slate-500"><i data-lucide="x" class="w-6 h-6"></i></button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-slate-900/50 custom-scrollbar relative">
+                        <div id="preview-loading" class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-slate-900/50 z-10 hidden">
+                            <div class="flex flex-col items-center">
+                                <i data-lucide="loader-2" class="w-10 h-10 text-indigo-600 animate-spin mb-3"></i>
+                                <span class="text-sm font-medium text-slate-600 dark:text-slate-300">正在渲染预览图...</span>
+                            </div>
+                        </div>
+                        <div id="preview-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                    </div>
+                    <div class="bg-white dark:bg-slate-800 px-6 py-4 border-t border-slate-200 dark:border-slate-700 sm:flex sm:flex-row-reverse shrink-0 gap-3">
+                        <button id="apply-preview-btn" type="button" class="inline-flex w-full justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:w-auto items-center"><i data-lucide="check" class="w-4 h-4 mr-2"></i>应用选择</button>
+                        <button id="cancel-preview-btn" type="button" class="mt-3 inline-flex w-full justify-center rounded-lg bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-white shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 sm:mt-0 sm:w-auto">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. 自定义 Alert 模态框 -->
+    <div id="custom-alert-modal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center">
+                <div class="relative transform overflow-hidden rounded-xl bg-white dark:bg-slate-800 text-left shadow-xl transition-all sm:w-full sm:max-w-sm border border-slate-200 dark:border-slate-700">
+                    <div class="px-6 py-5">
+                        <h3 id="alert-title" class="text-lg font-bold text-slate-900 dark:text-white mb-2">提示</h3>
+                        <p id="alert-message" class="text-sm text-slate-500 dark:text-slate-300 leading-relaxed"></p>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900/50 px-6 py-3 flex flex-row-reverse">
+                        <button id="alert-ok-btn" type="button" class="inline-flex w-full justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:ml-3 sm:w-auto">确定</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化图标
+        lucide.createIcons();
+
+        // DOM 元素引用
+        const elements = {
+            fileInput: document.getElementById('file-input'),
+            dropZone: document.getElementById('drop-zone'),
+            processBtn: document.getElementById('process-btn'),
+            fileListContainer: document.getElementById('file-list-container'),
+            fileList: document.getElementById('file-list'),
+            queueCount: document.getElementById('queue-count'),
+            clearQueueBtn: document.getElementById('clear-queue-btn'),
+            statusArea: document.getElementById('status-area'),
+            btnText: document.getElementById('btn-text'),
+            btnIcon: document.getElementById('btn-icon'),
+            btnSpinner: document.getElementById('btn-spinner'),
+            themeToggle: document.getElementById('theme-toggle'),
+            modeSelect: document.getElementById('mode-select'),
+            customRangeBox: document.getElementById('custom-range-box'),
+            customRangeInput: document.getElementById('custom-range-input'),
+            imageSettingsPanel: document.getElementById('image-settings-panel'),
+            imgFormatSelect: document.getElementById('img-format-select'),
+            
+            // 关键：新的分辨率输入框 ID
+            pngScaleInput: document.getElementById('png-scale-input'),
+            
+            imgQualityBox: document.getElementById('img-quality-box'),
+            imgQualityRange: document.getElementById('img-quality-range'),
+            qualityVal: document.getElementById('quality-val'),
+            progressContainer: document.getElementById('progress-container'),
+            progressBar: document.getElementById('progress-bar'),
+            progressText: document.getElementById('progress-text'),
+            progressPercent: document.getElementById('progress-percent'),
+            memoryWarning: document.getElementById('memory-warning'),
+            resultContainer: document.getElementById('result-container'),
+            reportContent: document.getElementById('report-content'),
+            downloadSingleBtn: document.getElementById('download-single-btn'),
+            downloadZipBtn: document.getElementById('download-zip-btn'),
+            // Modal related
+            previewModal: document.getElementById('preview-modal'),
+            previewGrid: document.getElementById('preview-grid'),
+            previewLoading: document.getElementById('preview-loading'),
+            customAlertModal: document.getElementById('custom-alert-modal'),
+            alertTitle: document.getElementById('alert-title'),
+            alertMessage: document.getElementById('alert-message'),
+            alertOkBtn: document.getElementById('alert-ok-btn')
+        };
+
+        // 状态管理
+        let state = {
+            fileQueue: [],
+            processedResults: [],
+            isProcessing: false,
+            currentPreviewFileIndex: -1,
+            pageSelectionState: []
+        };
+
+        // --- 1. 主题与基础交互 ---
+        const initTheme = () => {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        };
+        initTheme();
+        
+        elements.themeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+        });
+
+        // --- 2. 模式与面板切换 ---
+        elements.modeSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            // 控制自定义 PDF 范围面板
+            if (val === 'custom') {
+                elements.customRangeBox.classList.remove('hidden');
+            } else {
+                elements.customRangeBox.classList.add('hidden');
+            }
+            
+            // 控制图片导出面板
+            if (val === 'export-img') {
+                elements.imageSettingsPanel.classList.remove('hidden');
+            } else {
+                elements.imageSettingsPanel.classList.add('hidden');
+            }
+        });
+
+        // 图片质量条显示逻辑
+        elements.imgFormatSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === 'image/jpeg' || val === 'image/webp') {
+                elements.imgQualityBox.classList.remove('hidden');
+            } else {
+                elements.imgQualityBox.classList.add('hidden');
+            }
+        });
+        
+        elements.imgQualityRange.addEventListener('input', (e) => {
+            elements.qualityVal.textContent = e.target.value;
+        });
+
+        // --- 3. 自定义 Alert 实现 ---
+        function showCustomAlert(title, message) {
+            elements.alertTitle.textContent = title;
+            elements.alertMessage.textContent = message;
+            elements.customAlertModal.classList.remove('hidden');
+        }
+        
+        elements.alertOkBtn.addEventListener('click', () => {
+            elements.customAlertModal.classList.add('hidden');
+        });
+
+        // --- 4. 队列管理 ---
+        function updateQueueUI() {
+            elements.fileList.innerHTML = '';
+            elements.queueCount.textContent = state.fileQueue.length;
+            elements.resultContainer.classList.add('hidden');
+            
+            if (state.fileQueue.length > 0) {
+                elements.fileListContainer.classList.remove('hidden');
+                elements.processBtn.disabled = false;
+                elements.btnText.textContent = `开始批量处理 (${state.fileQueue.length})`;
+            } else {
+                elements.fileListContainer.classList.add('hidden');
+                elements.processBtn.disabled = true;
+                elements.btnText.textContent = '开始批量处理';
+                setStatus('');
+            }
+
+            state.fileQueue.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-100 dark:border-slate-700 animate-fade-in group';
+                item.innerHTML = `
+                    <div class="flex items-center overflow-hidden flex-1 mr-2">
+                        <i data-lucide="file-text" class="w-4 h-4 text-slate-400 mr-3 flex-shrink-0"></i>
+                        <div class="flex flex-col overflow-hidden">
+                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">${file.name}</span>
+                            <span class="text-xs text-slate-400">${formatBytes(file.size)}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        <button onclick="window.openPreview(${index})" class="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-slate-600 rounded-md transition-colors" title="可视化预览">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="window.removeFile(${index})" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors" title="移除文件">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+                elements.fileList.appendChild(item);
+            });
+            lucide.createIcons();
+        }
+
+        window.addFiles = (files) => {
+            for (let file of files) {
+                if (file.type === 'application/pdf') {
+                    if (!state.fileQueue.some(f => f.name === file.name && f.size === file.size)) {
+                        state.fileQueue.push(file);
+                    }
+                }
+            }
+            updateQueueUI();
+        };
+
+        window.removeFile = (index) => {
+            if (state.isProcessing) return;
+            state.fileQueue.splice(index, 1);
+            updateQueueUI();
+        };
+
+        elements.clearQueueBtn.addEventListener('click', () => {
+            if (state.isProcessing) return;
+            state.fileQueue = [];
+            state.processedResults = [];
+            updateQueueUI();
+            elements.progressContainer.classList.add('hidden');
+        });
+
+        // 拖拽逻辑
+        elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); elements.dropZone.classList.add('drag-over'); });
+        elements.dropZone.addEventListener('dragleave', () => elements.dropZone.classList.remove('drag-over'));
+        elements.dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            elements.dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) window.addFiles(e.dataTransfer.files);
+        });
+        elements.fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) window.addFiles(e.target.files);
+            elements.fileInput.value = ''; 
+        });
+
+        // --- 5. 核心处理逻辑 (Process) ---
+        
+        function updateProgress(percent, text) {
+            elements.progressBar.style.width = `${percent}%`;
+            elements.progressPercent.textContent = `${Math.round(percent)}%`;
+            if (text) elements.progressText.textContent = text;
+        }
+
+        function parsePageRange(rangeStr, totalPages) {
+            const pages = new Set();
+            const parts = rangeStr.split(',');
+            parts.forEach(part => {
+                const p = part.trim();
+                if (p.includes('-')) {
+                    const [start, end] = p.split('-').map(Number);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = start; i <= end; i++) {
+                            if (i >= 1 && i <= totalPages) pages.add(i - 1); 
+                        }
+                    }
+                } else {
+                    const num = Number(p);
+                    if (!isNaN(num) && num >= 1 && num <= totalPages) pages.add(num - 1);
+                }
+            });
+            return Array.from(pages).sort((a, b) => a - b);
+        }
+
+        elements.processBtn.addEventListener('click', async () => {
+            if (state.fileQueue.length === 0) return;
+            
+            // UI 状态设置
+            state.isProcessing = true;
+            state.processedResults = [];
+            elements.resultContainer.classList.add('hidden');
+            elements.processBtn.disabled = true;
+            elements.btnIcon.classList.add('hidden');
+            elements.btnSpinner.classList.remove('hidden');
+            elements.progressContainer.classList.remove('hidden');
+            
+            const mode = elements.modeSelect.value;
+            let totalProcessedCount = 0;
+            let successCount = 0;
+
+            try {
+                // ==========================================
+                // 分支 A: 导出为图片 (解决条码模糊的核心逻辑)
+                // ==========================================
+                if (mode === 'export-img') {
+                    const format = elements.imgFormatSelect.value;
+                    
+                    // 关键修复：从新的 png-scale-input 获取倍率，默认 4.0
+                    const scale = parseFloat(elements.pngScaleInput.value) || 4.0;
+                    
+                    const quality = parseFloat(elements.imgQualityRange.value) || 0.9;
+                    const extMap = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+                    const ext = extMap[format];
+                    
+                    // 内存警告
+                    if (scale >= 6.0) elements.memoryWarning.classList.remove('hidden');
+                    else elements.memoryWarning.classList.add('hidden');
+
+                    const totalFiles = state.fileQueue.length;
+                    
+                    for (let i = 0; i < totalFiles; i++) {
+                        const file = state.fileQueue[i];
+                        updateProgress((i / totalFiles) * 100, `正在渲染: ${file.name} (第 ${i + 1}/${totalFiles} 个)`);
+                        
+                        const arrayBuffer = await file.arrayBuffer();
+                        const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+                        const pdf = await loadingTask.promise;
+                        const numPages = pdf.numPages;
+                        const zip = new JSZip(); // 每个 PDF 生成一个 ZIP 包
+                        
+                        for (let p = 1; p <= numPages; p++) {
+                            // 渲染进度细分
+                            updateProgress(((i + (p-1)/numPages) / totalFiles) * 100, `渲染中: ${file.name} - 页码 ${p}/${numPages}`);
+                            // Anti-freeze
+                            await new Promise(r => setTimeout(r, 0));
+
+                            const page = await pdf.getPage(p);
+                            
+                            // 关键：应用高倍率 Scale
+                            const viewport = page.getViewport({ scale: scale });
+                            
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+
+                            // 填充白底 (关键，防止透明背景变黑)
+                            context.fillStyle = '#ffffff';
+                            context.fillRect(0, 0, canvas.width, canvas.height);
+
+                            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                            // Canvas to Blob
+                            const blob = await new Promise(resolve => canvas.toBlob(resolve, format, quality));
+                            
+                            const imgName = `${file.name.replace('.pdf', '')}_P${String(p).padStart(3, '0')}.${ext}`;
+                            zip.file(imgName, blob);
+                            
+                            // 主动释放 Canvas 内存
+                            canvas.width = 0;
+                            canvas.height = 0;
+                        }
+
+                        // 生成 ZIP
+                        updateProgress(((i + 1) / totalFiles) * 100, `打包中: ${file.name}`);
+                        const zipContent = await zip.generateAsync({ type: "blob" });
+                        
+                        state.processedResults.push({
+                            name: `图片包_${file.name.replace('.pdf', '')}.zip`,
+                            blob: zipContent
+                        });
+                        
+                        totalProcessedCount += numPages;
+                        successCount++;
+                    }
+                    
+                    elements.reportContent.innerHTML = `
+                        <p>• 成功转换文件: <strong>${successCount}</strong></p>
+                        <p>• 累计导出图片: <strong>${totalProcessedCount} 张</strong></p>
+                        <p>• 图片清晰度: <strong>${scale.toFixed(1)} 倍</strong> (${ext.toUpperCase()})</p>
+                    `;
+                } 
+                
+                // ==========================================
+                // 分支 B: PDF 页面处理 (Split/Remove)
+                // ==========================================
+                else {
+                    const customRangeStr = elements.customRangeInput.value;
+                    let totalRemovedPages = 0;
+                    const totalFiles = state.fileQueue.length;
+
+                    for (let i = 0; i < totalFiles; i++) {
+                        const file = state.fileQueue[i];
+                        updateProgress((i / totalFiles) * 100, `处理中: ${file.name}`);
+                        await new Promise(r => setTimeout(r, 10));
+
+                        const arrayBuffer = await file.arrayBuffer();
+                        const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                        const newPdfDoc = await PDFLib.PDFDocument.create();
+                        const pageCount = pdfDoc.getPageCount();
+                        
+                        let pagesToKeep = [];
+                        if (mode === 'keep-odd') {
+                            for (let k = 0; k < pageCount; k++) if (k % 2 === 0) pagesToKeep.push(k);
+                        } else if (mode === 'keep-even') {
+                            for (let k = 0; k < pageCount; k++) if (k % 2 !== 0) pagesToKeep.push(k);
+                        } else if (mode === 'custom') {
+                            pagesToKeep = parsePageRange(customRangeStr, pageCount);
+                        }
+
+                        if (pagesToKeep.length > 0) {
+                            const copiedPages = await newPdfDoc.copyPages(pdfDoc, pagesToKeep);
+                            copiedPages.forEach(page => newPdfDoc.addPage(page));
+                            const pdfBytes = await newPdfDoc.save();
+
+                            let prefix = mode === 'keep-odd' ? '奇数页_' : (mode === 'keep-even' ? '偶数页_' : '自定义_');
+                            state.processedResults.push({
+                                name: `${prefix}${file.name}`,
+                                blob: new Blob([pdfBytes], { type: 'application/pdf' })
+                            });
+                            
+                            totalProcessedCount += pageCount;
+                            totalRemovedPages += (pageCount - pagesToKeep.length);
+                            successCount++;
+                        }
+                    }
+
+                    elements.reportContent.innerHTML = `
+                        <p>• 成功处理文件: <strong>${successCount} / ${totalFiles}</strong></p>
+                        <p>• 累计扫描页数: <strong>${totalProcessedCount}</strong></p>
+                        <p>• 累计移除页数: <strong>${totalRemovedPages}</strong> (节省空间)</p>
+                    `;
+                }
+
+                // 统一完成逻辑
+                updateProgress(100, '处理完成');
+                elements.resultContainer.classList.remove('hidden');
+                setStatus('');
+
+            } catch (error) {
+                console.error(error);
+                showCustomAlert("处理出错", error.message || "未知错误，请检查文件是否损坏或内存不足。");
+                setStatus('❌ 处理中断', 'text-red-500');
+            } finally {
+                state.isProcessing = false;
+                elements.processBtn.disabled = false;
+                elements.btnIcon.classList.remove('hidden');
+                elements.btnSpinner.classList.add('hidden');
+                elements.btnText.textContent = `开始批量处理`;
+                elements.memoryWarning.classList.add('hidden');
+            }
+        });
+
+        // --- 6. 下载逻辑 ---
+        elements.downloadSingleBtn.addEventListener('click', async () => {
+            if (state.processedResults.length === 0) return;
+            for (let i = 0; i < state.processedResults.length; i++) {
+                saveAs(state.processedResults[i].blob, state.processedResults[i].name);
+                await new Promise(r => setTimeout(r, 800)); // 间隔防拦截
+            }
+        });
+
+        elements.downloadZipBtn.addEventListener('click', async () => {
+            if (state.processedResults.length === 0) return;
+            const originalText = elements.downloadZipBtn.innerHTML;
+            elements.downloadZipBtn.textContent = "打包中...";
+            elements.downloadZipBtn.disabled = true;
+
+            try {
+                const zip = new JSZip();
+                state.processedResults.forEach(item => zip.file(item.name, item.blob));
+                const content = await zip.generateAsync({ type: "blob" });
+                saveAs(content, `PDF处理结果_汇总打包_${new Date().getTime()}.zip`);
+            } catch (e) {
+                console.error(e);
+                showCustomAlert("打包失败", "文件过大导致内存不足，请尝试逐个下载。");
+            } finally {
+                elements.downloadZipBtn.innerHTML = originalText;
+                elements.downloadZipBtn.disabled = false;
+            }
+        });
+
+        // --- 7. 可视化预览 (保持原有修复逻辑) ---
+        window.openPreview = async (index) => {
+            state.currentPreviewFileIndex = index;
+            const file = state.fileQueue[index];
+            
+            elements.previewModal.classList.remove('hidden');
+            elements.previewGrid.innerHTML = '';
+            elements.previewLoading.classList.remove('hidden');
+            state.pageSelectionState = [];
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+                const pdf = await loadingTask.promise;
+                const numPages = pdf.numPages;
+
+                state.pageSelectionState = new Array(numPages).fill(true);
+
+                for (let i = 1; i <= numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 0.3 });
+                    
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    context.fillStyle = '#ffffff';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+
+                    await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.8);
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'page-thumb flex flex-col items-center';
+                    wrapper.dataset.pageIndex = i - 1;
+                    wrapper.innerHTML = `
+                        <div class="relative w-full">
+                            <img src="${imgData}" class="thumb-img" alt="Page ${i}" />
+                            <div class="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 rounded">P${i}</div>
+                        </div>
+                    `;
+
+                    wrapper.addEventListener('click', function() {
+                        const idx = parseInt(this.dataset.pageIndex);
+                        state.pageSelectionState[idx] = !state.pageSelectionState[idx];
+                        if (!state.pageSelectionState[idx]) this.classList.add('deleted');
+                        else this.classList.remove('deleted');
+                    });
+
+                    elements.previewGrid.appendChild(wrapper);
+                }
+            } catch (error) {
+                console.error(error);
+                showCustomAlert("预览失败", "无法生成预览，文件可能已加密。");
+                closePreview();
+            } finally {
+                elements.previewLoading.classList.add('hidden');
+            }
+        };
+
+        function closePreview() {
+            elements.previewModal.classList.add('hidden');
+            state.currentPreviewFileIndex = -1;
+        }
+        
+        document.getElementById('close-modal-btn').addEventListener('click', closePreview);
+        document.getElementById('cancel-preview-btn').addEventListener('click', closePreview);
+        document.getElementById('apply-preview-btn').addEventListener('click', () => {
+            const keepIndices = [];
+            state.pageSelectionState.forEach((keep, idx) => {
+                if (keep) keepIndices.push(idx + 1);
+            });
+            elements.customRangeInput.value = keepIndices.join(', ');
+            elements.modeSelect.value = 'custom';
+            elements.customRangeBox.classList.remove('hidden');
+            elements.imageSettingsPanel.classList.add('hidden'); // 预览应用后隐藏图片设置，防止混淆
+            setStatus(`✅ 已应用预览选择`, 'text-indigo-600');
+            closePreview();
+        });
+
+        // Utils
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+        function setStatus(msg, colorClass = 'text-slate-500') {
+            elements.statusArea.textContent = msg;
+            elements.statusArea.className = `mt-4 min-h-[20px] text-center text-sm font-medium transition-all duration-300 ${colorClass}`;
+            elements.statusArea.style.opacity = msg ? '1' : '0';
+        }
+    </script>
+</body>
+</html>
