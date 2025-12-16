@@ -33,6 +33,7 @@
     "category": "自定义",
     "id": 1765872800725,
     "icon": "Globe",
-    "color": "from-blue-500 to-cyan-500"
+    "color": "from-blue-500 to-cyan-500",
+    "customIconUrl": "https://raw.githubusercontent.com/shenxuezhang/wjcmm/main/icons/1765877435836_csv-ex-dedup.png"
   }
 ]
