@@ -54,7 +54,7 @@
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, Moon,
           X, Command, Globe, RefreshCw, Upload, Check, Power, Lock, Key, Pencil, ChevronDown, 
           Menu, LayoutGrid, ListFilter, LogOut,
-          Activity, Wifi, AlertTriangle, Image as ImageIcon, Loader2
+          Activity, Wifi, AlertTriangle, Image as ImageIcon, Loader2, Download, FileJson
         } from 'lucide-react';
 
         // =========================================================================
@@ -64,7 +64,7 @@
             owner: "shenxuezhang", 
             repo: "wjcmm", 
             path: "db.json",
-            imgPath: "icons/" // 图片存放目录
+            imgPath: "icons/" 
         };
         const ADMIN_PASSWORD = "8888";
         const SEARCH_ENGINES = {
@@ -84,7 +84,7 @@
             toBase64: (str) => window.btoa(unescape(encodeURIComponent(str))),
             fromBase64: (str) => decodeURIComponent(escape(window.atob(str))),
             
-            // 工具：将文件转为纯 Base64 字符串（不带 data:前缀，用于上传 GitHub）
+            // 将文件转换为纯 Base64 字符串（不带 data:前缀，用于上传 GitHub）
             fileToBase64Raw: (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -92,16 +92,41 @@
                 reader.onerror = error => reject(error);
             }),
             
-            // 工具：获取图片尺寸
-            getImageDimensions: (file) => new Promise((resolve, reject) => {
+            // 【新增功能】图片压缩：自动调整大小到 128x128 范围内，并转为 WebP 格式
+            compressImage: (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = (e) => {
                     const img = new Image();
-                    img.onload = () => resolve({ width: img.width, height: img.height });
-                    img.onerror = reject;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const max = 128; // 限制最大尺寸
+                        
+                        // 保持比例缩放
+                        if (width > height) {
+                            if (width > max) { height *= max / width; width = max; }
+                        } else {
+                            if (height > max) { width *= max / height; height = max; }
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // 导出为 WebP，质量 0.8，体积极小
+                        const dataUrl = canvas.toDataURL('image/webp', 0.8);
+                        resolve({
+                            base64Raw: dataUrl.split(',')[1], // 用于存储
+                            previewUrl: dataUrl // 用于显示
+                        });
+                    };
+                    img.onerror = () => reject(new Error("图片加载失败"));
                     img.src = e.target.result;
                 };
+                reader.onerror = reject;
             }),
             
             getGreeting: (date) => {
@@ -124,15 +149,13 @@
                 return JSON.parse(Utils.fromBase64(data.content));
             },
             
-            // 保存 db.json
             async saveApps(token, apps) {
                 if (!token) throw new Error("请配置Token");
                 const url = this.getApiUrl();
                 let sha = null;
                 try { const getRes = await fetch(url, { headers: { 'Authorization': `token ${token}` } }); if (getRes.ok) sha = (await getRes.json()).sha; } catch (e) {}
                 
-                // 关键：上传到 db.json 前，必须清理掉本地临时的 localIconData 数据
-                // 确保仓库里的 json 文件干净、体积小
+                // 清理掉本地临时的 localIconData
                 const cleanApps = apps.map(({ localIconData, localIconName, ...rest }) => rest);
 
                 const content = Utils.toBase64(JSON.stringify(cleanApps, null, 2));
@@ -145,10 +168,8 @@
                 return true;
             },
 
-            // 上传单张图片
             async uploadImage(token, base64Content, fileName) {
                 if (!token) throw new Error("需配置Token");
-                // 使用时间戳防止重名，保证 URL 唯一，避免缓存问题
                 const path = `${GH_CONFIG.imgPath}${Date.now()}_${fileName}`;
                 const url = `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${path}`;
                 
@@ -163,7 +184,6 @@
 
                 if (!res.ok) throw new Error(`图片上传失败: ${res.status}`);
                 const data = await res.json();
-                // 返回 GitHub 提供的 download_url (Raw URL)
                 return data.content.download_url; 
             }
         };
@@ -175,9 +195,9 @@
         const AppIcon = ({ url, fallbackColor, iconName, customIconUrl, localIconData }) => {
             const [error, setError] = useState(false);
             
-            // 优先级 1: 本地暂存的 Base64 图片 (最优先，保证预览即时性)
+            // 优先级 1: 本地暂存的 Base64 图片 (现在是压缩后的 WebP)
             if (localIconData) {
-                 return <img src={`data:image/png;base64,${localIconData}`} alt="preview" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" />;
+                 return <img src={`data:image/webp;base64,${localIconData}`} alt="preview" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" />;
             }
 
             // 优先级 2: 已同步到云端的图片 URL
@@ -191,13 +211,11 @@
                 return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><IconComponent className="w-6 h-6" /></div>;
             }
 
-            // 优先级 4: 自动获取 Favicon
             const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
             if (error || !url) return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><Globe className="w-6 h-6" /></div>;
             return <img src={faviconUrl} alt="icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
         };
 
-        // ... (WeatherWidget, HealthStatusWidget, TodoWidget 等组件保持完全不变) ...
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             useEffect(() => {
@@ -332,39 +350,101 @@
             );
         };
 
-        const SettingsModal = ({ isOpen, onClose, currentToken, onSave }) => {
-            const [token, setToken] = useState(currentToken); const [show, setShow] = useState(false);
+        // =========================================================================
+        // 4. SettingsModal 组件 (新增：导入/导出)
+        // =========================================================================
+        const SettingsModal = ({ isOpen, onClose, currentToken, onSave, allApps, onImport }) => {
+            const [token, setToken] = useState(currentToken); 
+            const [show, setShow] = useState(false);
+            const fileInputRef = useRef(null);
+
             useEffect(() => setToken(currentToken || ""), [currentToken]);
+
+            // 导出功能：下载 JSON 文件
+            const handleExport = () => {
+                const dataStr = JSON.stringify(allApps, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `my_dashboard_backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            // 导入功能：读取 JSON 并覆盖当前状态
+            const handleImportFile = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const importedApps = JSON.parse(event.target.result);
+                        if (Array.isArray(importedApps)) {
+                            if(confirm(`确定要导入 ${importedApps.length} 个应用吗？这将覆盖当前列表。`)) {
+                                onImport(importedApps);
+                                onClose();
+                            }
+                        } else {
+                            alert("无效的备份文件格式");
+                        }
+                    } catch (err) {
+                        alert("文件解析失败");
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = ''; // Reset input
+            };
+
             return (
                 <ModalWrapper isOpen={isOpen} onClose={onClose} title="系统设置" icon={Settings}>
                     <form onSubmit={(e) => { e.preventDefault(); onSave(token.trim()); onClose(); }}>
-                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">GitHub Token</label>
-                        <div className="relative mb-4">
-                            <input type={show?"text":"password"} placeholder="ghp_..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg pl-3 pr-10 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white" value={token} onChange={e=>setToken(e.target.value)} />
-                            <button type="button" onClick={()=>setShow(!show)} className="absolute right-3 top-2.5 text-xs text-slate-500">{show?'隐藏':'显示'}</button>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">GitHub Token</label>
+                                <div className="relative">
+                                    <input type={show?"text":"password"} placeholder="ghp_..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg pl-3 pr-10 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white" value={token} onChange={e=>setToken(e.target.value)} />
+                                    <button type="button" onClick={()=>setShow(!show)} className="absolute right-3 top-2.5 text-xs text-slate-500">{show?'隐藏':'显示'}</button>
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">数据备份与恢复</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button type="button" onClick={handleExport} className="flex items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium transition-colors">
+                                        <Download className="w-3.5 h-3.5 mr-1.5"/> 导出备份
+                                    </button>
+                                    <button type="button" onClick={() => fileInputRef.current.click()} className="flex items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium transition-colors">
+                                        <FileJson className="w-3.5 h-3.5 mr-1.5"/> 导入备份
+                                    </button>
+                                    <input type="file" ref={fileInputRef} onChange={handleImportFile} accept=".json" className="hidden" />
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium flex justify-center items-center"><Check className="w-4 h-4 mr-1"/> 保存配置</button>
                         </div>
-                        <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium flex justify-center items-center"><Check className="w-4 h-4 mr-1"/> 保存配置</button>
                     </form>
                 </ModalWrapper>
             );
         };
 
         // =========================================================================
-        // 4. AppModal 组件 (核心修改：只存本地，不上传)
+        // 5. AppModal 组件 (修改：自动压缩)
         // =========================================================================
         const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
             const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
-            const [localFile, setLocalFile] = useState(null); 
+            const [compressedResult, setCompressedResult] = useState(null); // 存储压缩后的数据
             const [uploadError, setUploadError] = useState("");
             const [activeTab, setActiveTab] = useState('default');
 
             useEffect(() => { 
                 if(isOpen) {
-                    // 如果已经有 "待上传的本地图" 或 "云端图"，默认切换到上传Tab
                     const hasIcon = appToEdit && (appToEdit.localIconData || appToEdit.customIconUrl);
                     setForm(appToEdit ? {...appToEdit} : { name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
                     setActiveTab(hasIcon ? 'upload' : 'default');
-                    setLocalFile(null);
+                    setCompressedResult(null);
                     setUploadError("");
                 }
             }, [isOpen, appToEdit]);
@@ -374,21 +454,22 @@
                 setUploadError("");
                 if (!file) return;
 
-                if (file.size > 2 * 1024 * 1024) {
-                    setUploadError("文件过大：请不要超过2MB");
+                // 即使文件很大，我们也尝试压缩。但如果超过 10MB 还是拦一下比较好
+                if (file.size > 10 * 1024 * 1024) {
+                    setUploadError("文件过于巨大，无法处理");
                     e.target.value = ""; 
                     return;
                 }
+
                 try {
-                    const dims = await Utils.getImageDimensions(file);
-                    if (dims.width > 100 || dims.height > 100) {
-                        setUploadError(`尺寸过大：当前${dims.width}x${dims.height}，要求≤100x100px`);
-                        e.target.value = "";
-                        return;
-                    }
-                    setLocalFile(file);
+                    // 【关键修改】调用压缩工具
+                    const result = await Utils.compressImage(file);
+                    setCompressedResult({
+                        ...result,
+                        name: file.name.replace(/\.[^/.]+$/, ".webp") // 强制改为 webp 后缀
+                    });
                 } catch (err) {
-                    setUploadError("无效的图片文件");
+                    setUploadError("图片处理失败，请重试");
                 }
             };
 
@@ -396,19 +477,11 @@
                 e.preventDefault();
                 let newData = { ...form };
 
-                if (activeTab === 'upload' && localFile) {
-                    // 【核心修改点】
-                    // 不上传到 GitHub，而是转成 Base64 存入 localIconData
-                    try {
-                        const rawBase64 = await Utils.fileToBase64Raw(localFile);
-                        newData.localIconData = rawBase64; // 暂存图片数据
-                        newData.localIconName = localFile.name; // 暂存文件名，方便同步时使用
-                    } catch (e) {
-                        setUploadError("图片处理失败");
-                        return;
-                    }
+                if (activeTab === 'upload' && compressedResult) {
+                    // 使用压缩后的数据
+                    newData.localIconData = compressedResult.base64Raw; 
+                    newData.localIconName = compressedResult.name; 
                 } else if (activeTab === 'default') {
-                    // 切换回默认，清除所有自定义图标数据
                     newData.customIconUrl = '';
                     delete newData.localIconData;
                     delete newData.localIconName;
@@ -428,13 +501,12 @@
 
                         {activeTab === 'upload' && (
                             <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                                <label className="block text-xs text-slate-500 mb-1">自定义图标 (≤100x100px, &lt;2MB)</label>
+                                <label className="block text-xs text-slate-500 mb-1">自定义图标 (自动压缩为WebP)</label>
                                 <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300"/>
                                 {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
                                 
-                                {/* 状态提示：让用户清楚当前图片的状态 */}
-                                {(form.localIconData && !localFile) && <p className="text-xs text-orange-500 mt-1 flex items-center"><Activity className="w-3 h-3 mr-1"/> 待上传 (本地暂存)</p>}
-                                {(form.customIconUrl && !form.localIconData && !localFile) && <p className="text-xs text-green-500 mt-1 flex items-center"><Check className="w-3 h-3 mr-1"/> 已同步到云端</p>}
+                                {(form.localIconData && !compressedResult) && <p className="text-xs text-orange-500 mt-1 flex items-center"><Activity className="w-3 h-3 mr-1"/> 待上传 (本地暂存)</p>}
+                                {(form.customIconUrl && !form.localIconData && !compressedResult) && <p className="text-xs text-green-500 mt-1 flex items-center"><Check className="w-3 h-3 mr-1"/> 已同步到云端</p>}
                             </div>
                         )}
 
@@ -513,7 +585,7 @@
         };
 
         // =========================================================================
-        // 5. 主程序
+        // 6. 主程序
         // =========================================================================
         function AppLauncher() {
             // State
@@ -540,8 +612,6 @@
             }, [isDark]);
 
             useEffect(() => {
-                // 将所有应用数据（包括还没上传的本地 Base64 图片）存入 localStorage
-                // 这样刷新页面，预览图不会丢失
                 if (isSyncEnabled) localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
                 localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds));
                 localStorage.setItem('is_sync_enabled', isSyncEnabled);
@@ -567,7 +637,6 @@
                 showStatus("同步中...", "loading");
                 try {
                     const apps = await GitHubService.fetchApps(token);
-                    // 注意：这里会直接覆盖本地数据，如果本地有未上传的修改，会被覆盖。
                     setCustomApps(apps);
                     showStatus("同步成功", "success");
                 } catch (e) {
@@ -576,44 +645,36 @@
                 }
             };
 
-            // 【核心修改点：处理批量上传】
             const handleSyncUp = async () => {
                 if (!ghToken) { showStatus("请配置Token", "error"); return setModals(m => ({ ...m, settings: true })); }
                 showStatus("开始同步...", "loading");
                 
-                // 1. 克隆数据，避免直接修改 State
                 let appsToSync = JSON.parse(JSON.stringify(customApps));
                 let changesMade = false;
 
                 try {
-                    // 2. 遍历所有应用，检查谁有 'localIconData' (待上传图片)
                     for (let i = 0; i < appsToSync.length; i++) {
                         const app = appsToSync[i];
                         if (app.localIconData) {
                             changesMade = true;
                             showStatus(`正在上传: ${app.name} 图标...`, "loading");
                             
-                            // 上传到 GitHub，获取永久链接
-                            const remoteUrl = await GitHubService.uploadImage(ghToken, app.localIconData, app.localIconName || 'icon.png');
+                            const remoteUrl = await GitHubService.uploadImage(ghToken, app.localIconData, app.localIconName || 'icon.webp');
                             
-                            // 替换：把本地 Base64 换成远程 URL
                             appsToSync[i] = {
                                 ...app,
-                                customIconUrl: remoteUrl, // 设置新地址
-                                localIconData: undefined, // 删掉本地数据
+                                customIconUrl: remoteUrl,
+                                localIconData: undefined,
                                 localIconName: undefined
                             };
                         }
                     }
 
-                    // 3. 如果有图片上传，先更新界面显示（防止后面保存JSON失败导致界面还是显示待上传）
                     if (changesMade) {
                         setCustomApps(appsToSync);
                     }
 
                     showStatus("正在保存数据...", "loading");
-                    
-                    // 4. 将最终干净的数据列表保存到 db.json
                     await GitHubService.saveApps(ghToken, appsToSync); 
                     showStatus("✅ 所有数据同步完成", "success");
 
@@ -630,7 +691,6 @@
             const allApps = isSyncEnabled ? customApps : [];
             const categories = ["全部", ...new Set(allApps.map(a => a.category))];
             
-            // 计算属性：检查是否有需要上传的本地变动（用于按钮变色提醒）
             const hasLocalChanges = useMemo(() => {
                 return customApps.some(app => app.localIconData);
             }, [customApps]);
@@ -691,7 +751,6 @@
                                     <div className="flex flex-col items-end gap-2"><WeatherWidget /></div>
                                 </header>
 
-                                {/* 插入健康检查组件 */}
                                 <HealthStatusWidget />
 
                                 <div className="mb-8 relative z-20">
@@ -724,7 +783,6 @@
                                                 </div>
                                                 <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1 line-clamp-1">{app.name}</h3>
                                                 <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{app.description}</p>
-                                                {/* 标记本地修改状态 */}
                                                 {app.localIconData && <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full shadow-sm" title="有待上传的图片"></div>}
                                             </a>
                                         </div>
@@ -747,7 +805,15 @@
 
                     <div className="fixed bottom-6 right-6 z-40"><TodoWidget /></div>
                     <AuthModal isOpen={modals.auth} onClose={()=>setModals(m=>({...m,auth:false}))} onSuccess={handleSyncUp} />
-                    <SettingsModal isOpen={modals.settings} onClose={()=>setModals(m=>({...m,settings:false}))} currentToken={ghToken} onSave={(t)=>{setGhToken(t);if(t&&isSyncEnabled)handleSyncDown(t);}} />
+                    {/* 更新 SettingsModal，传入 allApps 用于导出，onImport 用于导入 */}
+                    <SettingsModal 
+                        isOpen={modals.settings} 
+                        onClose={()=>setModals(m=>({...m,settings:false}))} 
+                        currentToken={ghToken} 
+                        onSave={(t)=>{setGhToken(t);if(t&&isSyncEnabled)handleSyncDown(t);}} 
+                        allApps={customApps}
+                        onImport={(data) => setCustomApps(data)}
+                    />
                     <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} />
                 </div>
             );
