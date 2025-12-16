@@ -64,7 +64,7 @@
             owner: "shenxuezhang", 
             repo: "wjcmm", 
             path: "db.json",
-            imgPath: "icons/" // 图片存储目录
+            imgPath: "icons/" // 图片存放目录
         };
         const ADMIN_PASSWORD = "8888";
         const SEARCH_ENGINES = {
@@ -83,14 +83,16 @@
         const Utils = {
             toBase64: (str) => window.btoa(unescape(encodeURIComponent(str))),
             fromBase64: (str) => decodeURIComponent(escape(window.atob(str))),
-            // 新增：文件转Base64（去头，用于GitHub API）
-            fileToBase64: (file) => new Promise((resolve, reject) => {
+            
+            // 工具：将文件转为纯 Base64 字符串（不带 data:前缀，用于上传 GitHub）
+            fileToBase64Raw: (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = () => resolve(reader.result.split(',')[1]);
                 reader.onerror = error => reject(error);
             }),
-            // 新增：读取图片尺寸
+            
+            // 工具：获取图片尺寸
             getImageDimensions: (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -101,6 +103,7 @@
                     img.src = e.target.result;
                 };
             }),
+            
             getGreeting: (date) => {
                 const hour = date.getHours();
                 if (hour < 6) return "夜深了"; if (hour < 11) return "早上好";
@@ -121,41 +124,46 @@
                 return JSON.parse(Utils.fromBase64(data.content));
             },
             
+            // 保存 db.json
             async saveApps(token, apps) {
                 if (!token) throw new Error("请配置Token");
                 const url = this.getApiUrl();
                 let sha = null;
                 try { const getRes = await fetch(url, { headers: { 'Authorization': `token ${token}` } }); if (getRes.ok) sha = (await getRes.json()).sha; } catch (e) {}
-                const content = Utils.toBase64(JSON.stringify(apps, null, 2));
+                
+                // 关键：上传到 db.json 前，必须清理掉本地临时的 localIconData 数据
+                // 确保仓库里的 json 文件干净、体积小
+                const cleanApps = apps.map(({ localIconData, localIconName, ...rest }) => rest);
+
+                const content = Utils.toBase64(JSON.stringify(cleanApps, null, 2));
                 const res = await fetch(url, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: `Update via Dashboard`, content, ...(sha && { sha }) })
                 });
-                if (!res.ok) throw new Error("上传失败");
+                if (!res.ok) throw new Error("配置文件保存失败");
                 return true;
             },
 
-            // 新增：上传图片到 GitHub icons 目录
-            async uploadImage(token, file, fileName) {
-                if (!token) throw new Error("需配置Token才能上传图片");
-                const path = `${GH_CONFIG.imgPath}${Date.now()}_${fileName}`; // 防止重名
+            // 上传单张图片
+            async uploadImage(token, base64Content, fileName) {
+                if (!token) throw new Error("需配置Token");
+                // 使用时间戳防止重名，保证 URL 唯一，避免缓存问题
+                const path = `${GH_CONFIG.imgPath}${Date.now()}_${fileName}`;
                 const url = `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${path}`;
-                const content = await Utils.fileToBase64(file);
                 
                 const res = await fetch(url, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: `Upload icon: ${fileName}`,
-                        content: content
+                        content: base64Content
                     })
                 });
 
-                if (!res.ok) throw new Error("图片上传失败，请检查Token权限");
+                if (!res.ok) throw new Error(`图片上传失败: ${res.status}`);
                 const data = await res.json();
-                // 返回 jsDelivr CDN 加速地址或者 raw 地址，推荐使用 raw 或 cdn
-                // 这里使用 GitHub Raw 地址，也可以改为 `https://cdn.jsdelivr.net/gh/${GH_CONFIG.owner}/${GH_CONFIG.repo}/${path}`
+                // 返回 GitHub 提供的 download_url (Raw URL)
                 return data.content.download_url; 
             }
         };
@@ -164,27 +172,32 @@
         // 3. 基础 UI 组件
         // =========================================================================
 
-        const AppIcon = ({ url, fallbackColor, iconName, customIconUrl }) => {
+        const AppIcon = ({ url, fallbackColor, iconName, customIconUrl, localIconData }) => {
             const [error, setError] = useState(false);
             
-            // 1. 如果有自定义上传的图片 URL
+            // 优先级 1: 本地暂存的 Base64 图片 (最优先，保证预览即时性)
+            if (localIconData) {
+                 return <img src={`data:image/png;base64,${localIconData}`} alt="preview" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" />;
+            }
+
+            // 优先级 2: 已同步到云端的图片 URL
             if (customIconUrl) {
                  return <img src={customIconUrl} alt="custom-icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
             }
 
-            // 2. 如果是内置图标
+            // 优先级 3: 内置图标库
             if (iconName && iconName !== 'Globe' && IconMap[iconName]) {
                 const IconComponent = IconMap[iconName];
                 return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><IconComponent className="w-6 h-6" /></div>;
             }
 
-            // 3. 自动获取 Favicon
+            // 优先级 4: 自动获取 Favicon
             const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
             if (error || !url) return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><Globe className="w-6 h-6" /></div>;
             return <img src={faviconUrl} alt="icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
         };
 
-        // ... (WeatherWidget, HealthStatusWidget, TodoWidget, ModalWrapper, AuthModal, SettingsModal 保持不变) ...
+        // ... (WeatherWidget, HealthStatusWidget, TodoWidget 等组件保持完全不变) ...
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             useEffect(() => {
@@ -337,20 +350,21 @@
         };
 
         // =========================================================================
-        // 4. 修改后的 AppModal 组件 (支持图片上传)
+        // 4. AppModal 组件 (核心修改：只存本地，不上传)
         // =========================================================================
-        const AppModal = ({ isOpen, onClose, onSave, appToEdit, ghToken }) => {
+        const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
             const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
-            const [uploadFile, setUploadFile] = useState(null);
-            const [uploading, setUploading] = useState(false);
+            const [localFile, setLocalFile] = useState(null); 
             const [uploadError, setUploadError] = useState("");
-            const [activeTab, setActiveTab] = useState('default'); // 'default' | 'upload'
+            const [activeTab, setActiveTab] = useState('default');
 
             useEffect(() => { 
                 if(isOpen) {
+                    // 如果已经有 "待上传的本地图" 或 "云端图"，默认切换到上传Tab
+                    const hasIcon = appToEdit && (appToEdit.localIconData || appToEdit.customIconUrl);
                     setForm(appToEdit ? {...appToEdit} : { name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
-                    setActiveTab(appToEdit && appToEdit.customIconUrl ? 'upload' : 'default');
-                    setUploadFile(null);
+                    setActiveTab(hasIcon ? 'upload' : 'default');
+                    setLocalFile(null);
                     setUploadError("");
                 }
             }, [isOpen, appToEdit]);
@@ -360,14 +374,11 @@
                 setUploadError("");
                 if (!file) return;
 
-                // 1. 校验大小 2MB
                 if (file.size > 2 * 1024 * 1024) {
                     setUploadError("文件过大：请不要超过2MB");
                     e.target.value = ""; 
                     return;
                 }
-
-                // 2. 校验尺寸 100x100
                 try {
                     const dims = await Utils.getImageDimensions(file);
                     if (dims.width > 100 || dims.height > 100) {
@@ -375,7 +386,7 @@
                         e.target.value = "";
                         return;
                     }
-                    setUploadFile(file);
+                    setLocalFile(file);
                 } catch (err) {
                     setUploadError("无效的图片文件");
                 }
@@ -383,36 +394,33 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                let finalCustomUrl = form.customIconUrl;
+                let newData = { ...form };
 
-                // 如果选择了文件，先上传到 GitHub
-                if (activeTab === 'upload' && uploadFile) {
-                    if (!ghToken) {
-                        alert("错误：必须在左侧侧边栏设置中配置 GitHub Token 才能上传图片！");
-                        return;
-                    }
-                    setUploading(true);
+                if (activeTab === 'upload' && localFile) {
+                    // 【核心修改点】
+                    // 不上传到 GitHub，而是转成 Base64 存入 localIconData
                     try {
-                        const url = await GitHubService.uploadImage(ghToken, uploadFile, uploadFile.name);
-                        finalCustomUrl = url;
-                    } catch (error) {
-                        setUploading(false);
-                        setUploadError("上传失败: " + error.message);
+                        const rawBase64 = await Utils.fileToBase64Raw(localFile);
+                        newData.localIconData = rawBase64; // 暂存图片数据
+                        newData.localIconName = localFile.name; // 暂存文件名，方便同步时使用
+                    } catch (e) {
+                        setUploadError("图片处理失败");
                         return;
                     }
-                    setUploading(false);
                 } else if (activeTab === 'default') {
-                    finalCustomUrl = ''; // 清除自定义图标
+                    // 切换回默认，清除所有自定义图标数据
+                    newData.customIconUrl = '';
+                    delete newData.localIconData;
+                    delete newData.localIconName;
                 }
 
-                onSave({ ...form, customIconUrl: finalCustomUrl });
+                onSave(newData);
                 onClose();
             };
 
             return (
                 <ModalWrapper isOpen={isOpen} onClose={onClose} title={appToEdit?"编辑应用":"添加应用"} icon={appToEdit?Pencil:Plus}>
                     <form onSubmit={handleSubmit} className="space-y-3">
-                        {/* 简易 Tabs */}
                         <div className="flex border-b border-slate-200 dark:border-slate-700 mb-2">
                             <button type="button" onClick={()=>setActiveTab('default')} className={`flex-1 py-2 text-xs font-medium ${activeTab==='default'?'text-indigo-600 border-b-2 border-indigo-600':'text-slate-500'}`}>默认/Favicon</button>
                             <button type="button" onClick={()=>setActiveTab('upload')} className={`flex-1 py-2 text-xs font-medium ${activeTab==='upload'?'text-indigo-600 border-b-2 border-indigo-600':'text-slate-500'}`}>上传图标</button>
@@ -423,7 +431,10 @@
                                 <label className="block text-xs text-slate-500 mb-1">自定义图标 (≤100x100px, &lt;2MB)</label>
                                 <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300"/>
                                 {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
-                                {(form.customIconUrl && !uploadFile) && <p className="text-xs text-green-500 mt-1 flex items-center"><Check className="w-3 h-3 mr-1"/> 当前已使用自定义图片</p>}
+                                
+                                {/* 状态提示：让用户清楚当前图片的状态 */}
+                                {(form.localIconData && !localFile) && <p className="text-xs text-orange-500 mt-1 flex items-center"><Activity className="w-3 h-3 mr-1"/> 待上传 (本地暂存)</p>}
+                                {(form.customIconUrl && !form.localIconData && !localFile) && <p className="text-xs text-green-500 mt-1 flex items-center"><Check className="w-3 h-3 mr-1"/> 已同步到云端</p>}
                             </div>
                         )}
 
@@ -431,8 +442,8 @@
                         <div><label className="text-xs text-slate-500 dark:text-slate-400">URL</label><input required type="url" placeholder="https://" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></div>
                         <div><label className="text-xs text-slate-500 dark:text-slate-400">描述</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></div>
                         
-                        <button disabled={uploading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium mt-2 flex justify-center items-center">
-                            {uploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2"/> 上传中...</> : "保存"}
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium mt-2 flex justify-center items-center">
+                            保存 (本地暂存)
                         </button>
                     </form>
                 </ModalWrapper>
@@ -442,7 +453,7 @@
         const Sidebar = ({ 
             isOpenMobile, onCloseMobile, categories, selectedCategory, onSelectCategory,
             isSyncEnabled, onToggleSync, syncStatus, onSettings, onAuth,
-            isDark, onToggleTheme, ghToken
+            isDark, onToggleTheme, ghToken, hasLocalChanges
         }) => {
             return (
                 <>
@@ -491,8 +502,8 @@
                                 </button>
                             </div>
                             {isSyncEnabled && (
-                                <button onClick={onAuth} disabled={syncStatus.type==='loading'} className="w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-all disabled:opacity-50">
-                                    <Upload className="w-4 h-4 mr-2" /> 上传
+                                <button onClick={onAuth} disabled={syncStatus.type==='loading'} className={`w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-all disabled:opacity-50 ${hasLocalChanges ? 'bg-orange-600 hover:bg-orange-700 animate-pulse-slow' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                                    {hasLocalChanges ? <><Upload className="w-4 h-4 mr-2" /> 同步 (含图片)</> : <><Upload className="w-4 h-4 mr-2" /> 上传</>}
                                 </button>
                             )}
                         </div>
@@ -529,6 +540,8 @@
             }, [isDark]);
 
             useEffect(() => {
+                // 将所有应用数据（包括还没上传的本地 Base64 图片）存入 localStorage
+                // 这样刷新页面，预览图不会丢失
                 if (isSyncEnabled) localStorage.setItem('my_custom_apps_cache', JSON.stringify(customApps));
                 localStorage.setItem('my_pinned_apps', JSON.stringify(pinnedIds));
                 localStorage.setItem('is_sync_enabled', isSyncEnabled);
@@ -554,6 +567,7 @@
                 showStatus("同步中...", "loading");
                 try {
                     const apps = await GitHubService.fetchApps(token);
+                    // 注意：这里会直接覆盖本地数据，如果本地有未上传的修改，会被覆盖。
                     setCustomApps(apps);
                     showStatus("同步成功", "success");
                 } catch (e) {
@@ -562,11 +576,50 @@
                 }
             };
 
+            // 【核心修改点：处理批量上传】
             const handleSyncUp = async () => {
                 if (!ghToken) { showStatus("请配置Token", "error"); return setModals(m => ({ ...m, settings: true })); }
-                showStatus("上传中...", "loading");
-                try { await GitHubService.saveApps(ghToken, customApps); showStatus("✅ 上传成功", "success"); } 
-                catch (e) { showStatus(e.message, "error"); }
+                showStatus("开始同步...", "loading");
+                
+                // 1. 克隆数据，避免直接修改 State
+                let appsToSync = JSON.parse(JSON.stringify(customApps));
+                let changesMade = false;
+
+                try {
+                    // 2. 遍历所有应用，检查谁有 'localIconData' (待上传图片)
+                    for (let i = 0; i < appsToSync.length; i++) {
+                        const app = appsToSync[i];
+                        if (app.localIconData) {
+                            changesMade = true;
+                            showStatus(`正在上传: ${app.name} 图标...`, "loading");
+                            
+                            // 上传到 GitHub，获取永久链接
+                            const remoteUrl = await GitHubService.uploadImage(ghToken, app.localIconData, app.localIconName || 'icon.png');
+                            
+                            // 替换：把本地 Base64 换成远程 URL
+                            appsToSync[i] = {
+                                ...app,
+                                customIconUrl: remoteUrl, // 设置新地址
+                                localIconData: undefined, // 删掉本地数据
+                                localIconName: undefined
+                            };
+                        }
+                    }
+
+                    // 3. 如果有图片上传，先更新界面显示（防止后面保存JSON失败导致界面还是显示待上传）
+                    if (changesMade) {
+                        setCustomApps(appsToSync);
+                    }
+
+                    showStatus("正在保存数据...", "loading");
+                    
+                    // 4. 将最终干净的数据列表保存到 db.json
+                    await GitHubService.saveApps(ghToken, appsToSync); 
+                    showStatus("✅ 所有数据同步完成", "success");
+
+                } catch (e) { 
+                    showStatus("同步失败: " + e.message, "error"); 
+                }
             };
 
             const handleSaveApp = (formData) => {
@@ -576,6 +629,11 @@
 
             const allApps = isSyncEnabled ? customApps : [];
             const categories = ["全部", ...new Set(allApps.map(a => a.category))];
+            
+            // 计算属性：检查是否有需要上传的本地变动（用于按钮变色提醒）
+            const hasLocalChanges = useMemo(() => {
+                return customApps.some(app => app.localIconData);
+            }, [customApps]);
             
             const filteredApps = useMemo(() => {
                 return allApps.filter(app => {
@@ -605,6 +663,7 @@
                         isDark={isDark}
                         onToggleTheme={() => setIsDark(!isDark)}
                         ghToken={ghToken}
+                        hasLocalChanges={hasLocalChanges}
                     />
 
                     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -656,7 +715,7 @@
                                         <div key={app.id} className="group relative block h-full animate-fade-in">
                                             <a href={app.url} target="_blank" rel="noopener noreferrer" className="relative h-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-xl p-5 flex flex-col items-start transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-indigo-500/30 dark:hover:border-indigo-400/30">
                                                 <div className="flex justify-between items-start w-full mb-4">
-                                                    <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} customIconUrl={app.customIconUrl} />
+                                                    <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} customIconUrl={app.customIconUrl} localIconData={app.localIconData} />
                                                     <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button onClick={(e) => { e.preventDefault(); setEditingApp(app); setModals(m=>({...m, app: true})); }} className="p-1.5 rounded text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-700"><Pencil className="w-3.5 h-3.5"/></button>
                                                         <button onClick={(e) => { e.preventDefault(); setPinnedIds(p => p.includes(app.id) ? p.filter(i=>i!==app.id) : [...p, app.id]); }} className={`p-1.5 rounded transition-colors ${pinnedIds.includes(app.id) ? 'text-yellow-500' : 'text-slate-400 hover:text-yellow-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><Pin className={`w-3.5 h-3.5 ${pinnedIds.includes(app.id)?'fill-current':''}`}/></button>
@@ -665,6 +724,8 @@
                                                 </div>
                                                 <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1 line-clamp-1">{app.name}</h3>
                                                 <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{app.description}</p>
+                                                {/* 标记本地修改状态 */}
+                                                {app.localIconData && <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full shadow-sm" title="有待上传的图片"></div>}
                                             </a>
                                         </div>
                                     ))}
@@ -687,8 +748,7 @@
                     <div className="fixed bottom-6 right-6 z-40"><TodoWidget /></div>
                     <AuthModal isOpen={modals.auth} onClose={()=>setModals(m=>({...m,auth:false}))} onSuccess={handleSyncUp} />
                     <SettingsModal isOpen={modals.settings} onClose={()=>setModals(m=>({...m,settings:false}))} currentToken={ghToken} onSave={(t)=>{setGhToken(t);if(t&&isSyncEnabled)handleSyncDown(t);}} />
-                    {/* 将 Token 传入 AppModal 以支持图片上传 */}
-                    <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} ghToken={ghToken} />
+                    <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} />
                 </div>
             );
         }
