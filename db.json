@@ -25,5 +25,14 @@
     "category": "工具",
     "icon": "Database",
     "color": "from-purple-600 to-pink-500"
+  },
+  {
+    "name": "Excel 表格列去重提取工具",
+    "url": "https://shenxuezhang.github.io/wjcmm/csv-ex-dedup.html",
+    "description": "核心功能：数据去重、外部清单匹配、智能预览与导出、数据质量分析、人工抽检",
+    "category": "自定义",
+    "id": 1765872800725,
+    "icon": "Globe",
+    "color": "from-blue-500 to-cyan-500"
   }
 ]
