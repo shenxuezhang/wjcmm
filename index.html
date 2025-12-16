@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的应用工作台 - 自制版</title>
+    <title>我的应用工作台 - Pro版</title>
     
     <!-- 1. 基础库引入 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -33,19 +33,13 @@
     <!-- 2. 全局样式 -->
     <style>
         body { transition: background-color 0.3s, color 0.3s; }
-        
-        /* 滚动条优化 */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         .dark ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* 动画工具类 */
         .animate-fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* 状态呼吸灯动画 */
         .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
@@ -60,14 +54,18 @@
           Pin, Trash2, CheckCircle, Circle, Cloud, Sun, CloudRain, Moon,
           X, Command, Globe, RefreshCw, Upload, Check, Power, Lock, Key, Pencil, ChevronDown, 
           Menu, LayoutGrid, ListFilter, LogOut,
-          // 新增图标
-          Activity, Wifi, AlertTriangle
+          Activity, Wifi, AlertTriangle, Image as ImageIcon, Loader2
         } from 'lucide-react';
 
         // =========================================================================
         // 1. 全局配置区域
         // =========================================================================
-        const GH_CONFIG = { owner: "shenxuezhang", repo: "wjcmm", path: "db.json" };
+        const GH_CONFIG = { 
+            owner: "shenxuezhang", 
+            repo: "wjcmm", 
+            path: "db.json",
+            imgPath: "icons/" // 图片存储目录
+        };
         const ADMIN_PASSWORD = "8888";
         const SEARCH_ENGINES = {
             baidu:    { name: "百度",     url: "https://www.baidu.com/s?wd=",               placeholder: "百度一下..." },
@@ -85,6 +83,24 @@
         const Utils = {
             toBase64: (str) => window.btoa(unescape(encodeURIComponent(str))),
             fromBase64: (str) => decodeURIComponent(escape(window.atob(str))),
+            // 新增：文件转Base64（去头，用于GitHub API）
+            fileToBase64: (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = error => reject(error);
+            }),
+            // 新增：读取图片尺寸
+            getImageDimensions: (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => resolve({ width: img.width, height: img.height });
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+            }),
             getGreeting: (date) => {
                 const hour = date.getHours();
                 if (hour < 6) return "夜深了"; if (hour < 11) return "早上好";
@@ -94,6 +110,7 @@
 
         const GitHubService = {
             getApiUrl: () => `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${GH_CONFIG.path}`,
+            
             async fetchApps(token) {
                 if (!token) throw new Error("请配置Token");
                 const res = await fetch(this.getApiUrl(), { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' } });
@@ -103,6 +120,7 @@
                 const data = await res.json();
                 return JSON.parse(Utils.fromBase64(data.content));
             },
+            
             async saveApps(token, apps) {
                 if (!token) throw new Error("请配置Token");
                 const url = this.getApiUrl();
@@ -112,11 +130,33 @@
                 const res = await fetch(url, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `Update via Dashboard - ${new Date().toLocaleString()}`, content, ...(sha && { sha }) })
+                    body: JSON.stringify({ message: `Update via Dashboard`, content, ...(sha && { sha }) })
                 });
-                if (res.status === 401) throw new Error("Token无效");
                 if (!res.ok) throw new Error("上传失败");
                 return true;
+            },
+
+            // 新增：上传图片到 GitHub icons 目录
+            async uploadImage(token, file, fileName) {
+                if (!token) throw new Error("需配置Token才能上传图片");
+                const path = `${GH_CONFIG.imgPath}${Date.now()}_${fileName}`; // 防止重名
+                const url = `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/contents/${path}`;
+                const content = await Utils.fileToBase64(file);
+                
+                const res = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: `Upload icon: ${fileName}`,
+                        content: content
+                    })
+                });
+
+                if (!res.ok) throw new Error("图片上传失败，请检查Token权限");
+                const data = await res.json();
+                // 返回 jsDelivr CDN 加速地址或者 raw 地址，推荐使用 raw 或 cdn
+                // 这里使用 GitHub Raw 地址，也可以改为 `https://cdn.jsdelivr.net/gh/${GH_CONFIG.owner}/${GH_CONFIG.repo}/${path}`
+                return data.content.download_url; 
             }
         };
 
@@ -124,17 +164,27 @@
         // 3. 基础 UI 组件
         // =========================================================================
 
-        const AppIcon = ({ url, fallbackColor, iconName }) => {
+        const AppIcon = ({ url, fallbackColor, iconName, customIconUrl }) => {
             const [error, setError] = useState(false);
+            
+            // 1. 如果有自定义上传的图片 URL
+            if (customIconUrl) {
+                 return <img src={customIconUrl} alt="custom-icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
+            }
+
+            // 2. 如果是内置图标
             if (iconName && iconName !== 'Globe' && IconMap[iconName]) {
                 const IconComponent = IconMap[iconName];
                 return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><IconComponent className="w-6 h-6" /></div>;
             }
+
+            // 3. 自动获取 Favicon
             const faviconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`;
             if (error || !url) return <div className={`w-10 h-10 flex items-center justify-center rounded-lg bg-gradient-to-br ${fallbackColor} shadow-md text-white`}><Globe className="w-6 h-6" /></div>;
             return <img src={faviconUrl} alt="icon" className="w-10 h-10 rounded-lg shadow-md bg-white dark:bg-slate-800 object-cover" onError={() => setError(true)} />;
         };
 
+        // ... (WeatherWidget, HealthStatusWidget, TodoWidget, ModalWrapper, AuthModal, SettingsModal 保持不变) ...
         const WeatherWidget = () => {
             const [weather, setWeather] = useState(null);
             useEffect(() => {
@@ -154,52 +204,39 @@
                 </div>
             );
         };
-
-        // --- 新增: 动态健康检查组件 ---
+        
         const HealthStatusWidget = () => {
-            // 模拟服务状态数据
             const [services, setServices] = useState([
                 { id: 1, name: "数据库服务", type: 'db', status: 'normal', latency: 24 },
                 { id: 2, name: "外部 API 接口", type: 'api', status: 'slow', latency: 450 }
             ]);
-
-            // 模拟动态波动
             useEffect(() => {
                 const interval = setInterval(() => {
                     setServices(prev => prev.map(svc => {
-                        // 随机波动延迟，让数字跳动看起来像真的
                         const noise = Math.floor(Math.random() * 40) - 20; 
                         let newLatency = Math.max(5, svc.latency + noise);
-                        
-                        // 偶尔出现尖峰
                         if (Math.random() > 0.95) newLatency += 200;
-                        if (newLatency > 800) newLatency = 400; // 自动恢复
-
+                        if (newLatency > 800) newLatency = 400; 
                         let newStatus = 'normal';
                         if (newLatency > 300) newStatus = 'slow';
                         if (newLatency > 800) newStatus = 'error';
-
                         return { ...svc, latency: newLatency, status: newStatus };
                     }));
                 }, 2000); 
                 return () => clearInterval(interval);
             }, []);
-
             return (
                 <div className="mb-8 w-full animate-fade-in" style={{animationDelay: '0.1s'}}>
                     <div className="flex items-center mb-4 pl-1">
                         <div className="w-1 h-5 bg-purple-500 mr-3 rounded-full shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
                         <h2 className="text-base font-bold text-slate-800 dark:text-white tracking-tight">动态健康检查与即时状态</h2>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {services.map(svc => {
-                            // 根据状态定义颜色样式
                             const isNormal = svc.status === 'normal';
                             const bgColor = isNormal ? 'bg-green-100 dark:bg-green-900/20' : 'bg-yellow-100 dark:bg-yellow-900/20';
                             const iconColor = isNormal ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400';
                             const textColor = isNormal ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400';
-                            
                             return (
                                 <div key={svc.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex items-center shadow-sm hover:shadow-md transition-shadow">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${bgColor} ${iconColor}`}>
@@ -208,18 +245,10 @@
                                     <div className="flex-1">
                                         <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{svc.name}</div>
                                         <div className={`text-xs font-bold flex items-center mt-0.5 ${textColor}`}>
-                                            {isNormal ? (
-                                                <>正常</>
-                                            ) : (
-                                                <><AlertTriangle className="w-3 h-3 mr-1"/> 延迟 ({svc.latency}ms)</>
-                                            )}
+                                            {isNormal ? <>正常</> : <><AlertTriangle className="w-3 h-3 mr-1"/> 延迟 ({svc.latency}ms)</>}
                                         </div>
                                     </div>
-                                    {isNormal && (
-                                        <div className="flex items-center space-x-1">
-                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse-slow"></span>
-                                        </div>
-                                    )}
+                                    {isNormal && <div className="flex items-center space-x-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse-slow"></span></div>}
                                 </div>
                             );
                         })}
@@ -307,16 +336,104 @@
             );
         };
 
-        const AppModal = ({ isOpen, onClose, onSave, appToEdit }) => {
-            const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义' });
-            useEffect(() => { if(isOpen) setForm(appToEdit ? {...appToEdit} : { name: '', url: '', description: '', category: '自定义' }); }, [isOpen, appToEdit]);
+        // =========================================================================
+        // 4. 修改后的 AppModal 组件 (支持图片上传)
+        // =========================================================================
+        const AppModal = ({ isOpen, onClose, onSave, appToEdit, ghToken }) => {
+            const [form, setForm] = useState({ name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
+            const [uploadFile, setUploadFile] = useState(null);
+            const [uploading, setUploading] = useState(false);
+            const [uploadError, setUploadError] = useState("");
+            const [activeTab, setActiveTab] = useState('default'); // 'default' | 'upload'
+
+            useEffect(() => { 
+                if(isOpen) {
+                    setForm(appToEdit ? {...appToEdit} : { name: '', url: '', description: '', category: '自定义', customIconUrl: '' });
+                    setActiveTab(appToEdit && appToEdit.customIconUrl ? 'upload' : 'default');
+                    setUploadFile(null);
+                    setUploadError("");
+                }
+            }, [isOpen, appToEdit]);
+
+            const handleFileChange = async (e) => {
+                const file = e.target.files[0];
+                setUploadError("");
+                if (!file) return;
+
+                // 1. 校验大小 2MB
+                if (file.size > 2 * 1024 * 1024) {
+                    setUploadError("文件过大：请不要超过2MB");
+                    e.target.value = ""; 
+                    return;
+                }
+
+                // 2. 校验尺寸 100x100
+                try {
+                    const dims = await Utils.getImageDimensions(file);
+                    if (dims.width > 100 || dims.height > 100) {
+                        setUploadError(`尺寸过大：当前${dims.width}x${dims.height}，要求≤100x100px`);
+                        e.target.value = "";
+                        return;
+                    }
+                    setUploadFile(file);
+                } catch (err) {
+                    setUploadError("无效的图片文件");
+                }
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                let finalCustomUrl = form.customIconUrl;
+
+                // 如果选择了文件，先上传到 GitHub
+                if (activeTab === 'upload' && uploadFile) {
+                    if (!ghToken) {
+                        alert("错误：必须在左侧侧边栏设置中配置 GitHub Token 才能上传图片！");
+                        return;
+                    }
+                    setUploading(true);
+                    try {
+                        const url = await GitHubService.uploadImage(ghToken, uploadFile, uploadFile.name);
+                        finalCustomUrl = url;
+                    } catch (error) {
+                        setUploading(false);
+                        setUploadError("上传失败: " + error.message);
+                        return;
+                    }
+                    setUploading(false);
+                } else if (activeTab === 'default') {
+                    finalCustomUrl = ''; // 清除自定义图标
+                }
+
+                onSave({ ...form, customIconUrl: finalCustomUrl });
+                onClose();
+            };
+
             return (
                 <ModalWrapper isOpen={isOpen} onClose={onClose} title={appToEdit?"编辑应用":"添加应用"} icon={appToEdit?Pencil:Plus}>
-                    <form onSubmit={(e)=>{e.preventDefault();onSave(form);onClose();}} className="space-y-3">
+                    <form onSubmit={handleSubmit} className="space-y-3">
+                        {/* 简易 Tabs */}
+                        <div className="flex border-b border-slate-200 dark:border-slate-700 mb-2">
+                            <button type="button" onClick={()=>setActiveTab('default')} className={`flex-1 py-2 text-xs font-medium ${activeTab==='default'?'text-indigo-600 border-b-2 border-indigo-600':'text-slate-500'}`}>默认/Favicon</button>
+                            <button type="button" onClick={()=>setActiveTab('upload')} className={`flex-1 py-2 text-xs font-medium ${activeTab==='upload'?'text-indigo-600 border-b-2 border-indigo-600':'text-slate-500'}`}>上传图标</button>
+                        </div>
+
+                        {activeTab === 'upload' && (
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
+                                <label className="block text-xs text-slate-500 mb-1">自定义图标 (≤100x100px, &lt;2MB)</label>
+                                <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300"/>
+                                {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
+                                {(form.customIconUrl && !uploadFile) && <p className="text-xs text-green-500 mt-1 flex items-center"><Check className="w-3 h-3 mr-1"/> 当前已使用自定义图片</p>}
+                            </div>
+                        )}
+
                         <div><label className="text-xs text-slate-500 dark:text-slate-400">名称</label><input required type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
                         <div><label className="text-xs text-slate-500 dark:text-slate-400">URL</label><input required type="url" placeholder="https://" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></div>
                         <div><label className="text-xs text-slate-500 dark:text-slate-400">描述</label><input type="text" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none dark:text-white" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></div>
-                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium mt-2">保存</button>
+                        
+                        <button disabled={uploading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium mt-2 flex justify-center items-center">
+                            {uploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2"/> 上传中...</> : "保存"}
+                        </button>
                     </form>
                 </ModalWrapper>
             );
@@ -385,7 +502,7 @@
         };
 
         // =========================================================================
-        // 4. 主程序
+        // 5. 主程序
         // =========================================================================
         function AppLauncher() {
             // State
@@ -539,7 +656,7 @@
                                         <div key={app.id} className="group relative block h-full animate-fade-in">
                                             <a href={app.url} target="_blank" rel="noopener noreferrer" className="relative h-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-xl p-5 flex flex-col items-start transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-indigo-500/30 dark:hover:border-indigo-400/30">
                                                 <div className="flex justify-between items-start w-full mb-4">
-                                                    <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} />
+                                                    <AppIcon url={app.url} fallbackColor={app.color} iconName={app.icon} customIconUrl={app.customIconUrl} />
                                                     <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button onClick={(e) => { e.preventDefault(); setEditingApp(app); setModals(m=>({...m, app: true})); }} className="p-1.5 rounded text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-700"><Pencil className="w-3.5 h-3.5"/></button>
                                                         <button onClick={(e) => { e.preventDefault(); setPinnedIds(p => p.includes(app.id) ? p.filter(i=>i!==app.id) : [...p, app.id]); }} className={`p-1.5 rounded transition-colors ${pinnedIds.includes(app.id) ? 'text-yellow-500' : 'text-slate-400 hover:text-yellow-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><Pin className={`w-3.5 h-3.5 ${pinnedIds.includes(app.id)?'fill-current':''}`}/></button>
@@ -570,7 +687,8 @@
                     <div className="fixed bottom-6 right-6 z-40"><TodoWidget /></div>
                     <AuthModal isOpen={modals.auth} onClose={()=>setModals(m=>({...m,auth:false}))} onSuccess={handleSyncUp} />
                     <SettingsModal isOpen={modals.settings} onClose={()=>setModals(m=>({...m,settings:false}))} currentToken={ghToken} onSave={(t)=>{setGhToken(t);if(t&&isSyncEnabled)handleSyncDown(t);}} />
-                    <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} />
+                    {/* 将 Token 传入 AppModal 以支持图片上传 */}
+                    <AppModal isOpen={modals.app} onClose={()=>setModals(m=>({...m,app:false}))} onSave={handleSaveApp} appToEdit={editingApp} ghToken={ghToken} />
                 </div>
             );
         }
@@ -580,4 +698,3 @@
     </script>
 </body>
 </html>
-
