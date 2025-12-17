@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartLens Pro - 企业级 AI 视觉识别工作台</title>
+    <title>PDF条码工作台 SmartLens Pro - 企业级 </title>
     <!-- 引入 Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 QuaggaJS 核心库 -->
@@ -85,7 +85,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             </div>
             <div>
-                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens <span class="text-brand-600">Pro</span></h1>
+                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens PDF条码处理工作台 <span class="text-brand-600">Pro v3.0</span></h1>
                 <p class="text-xs text-slate-400 font-medium">企业级 AI 视觉识别工作台</p>
             </div>
         </div>
@@ -114,7 +114,7 @@
             <div class="p-6 pb-2">
                 <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
                     <span class="w-1.5 h-6 bg-brand-600 rounded-full"></span>
-                    数据载入
+                    数据文件载入
                 </h2>
             </div>
 
@@ -164,7 +164,7 @@
 
                 <button onclick="clearAll()" class="w-full text-xs text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1 py-2">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                    清空重置所有内容
+                    清空重置页面内容
                 </button>
             </div>
         </aside>
@@ -217,7 +217,7 @@
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
                         <h3 class="font-bold text-brand-600 text-sm flex items-center gap-2">
-                            条码明细
+                            条码明细 - 提取区
                             <span class="text-[10px] text-slate-400 font-normal px-2 py-0.5 bg-slate-50 rounded-full">纯数值</span>
                         </h3>
                         <button onclick="copyResults('resultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制">
@@ -232,7 +232,7 @@
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
                         <h3 class="font-bold text-slate-500 text-sm flex items-center gap-2">
-                            右下角特征信息 (AI)
+                            文本提取信息 (OCR)
                         </h3>
                         <div class="flex items-center gap-2">
                             <span class="text-[10px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded-full border border-slate-100">仅奇数页</span>
