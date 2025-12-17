@@ -53,5 +53,15 @@
     "id": 1765908176053,
     "icon": "Globe",
     "color": "from-blue-500 to-cyan-500"
+  },
+  {
+    "name": "SmartLens Pro 条码器v3.0",
+    "url": "https://shenxuezhang.github.io/wjcmm/barcode.html",
+    "description": "智能识别 · 精准提取 · 高效自动化",
+    "category": "文件处理工具",
+    "customIconUrl": "https://raw.githubusercontent.com/shenxuezhang/wjcmm/main/icons/1765998783594_barcode%20img.webp",
+    "id": 1765998128035,
+    "icon": "Globe",
+    "color": "from-blue-500 to-cyan-500"
   }
 ]
