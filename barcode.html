@@ -53,10 +53,10 @@
         }
         
         /* 美化滚动条 */
-        textarea::-webkit-scrollbar { width: 6px; height: 6px; }
-        textarea::-webkit-scrollbar-track { background: transparent; }
-        textarea::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        textarea::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        textarea::-webkit-scrollbar, .history-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        textarea::-webkit-scrollbar-track, .history-scroll::-webkit-scrollbar-track { background: transparent; }
+        textarea::-webkit-scrollbar-thumb, .history-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        textarea::-webkit-scrollbar-thumb:hover, .history-scroll::-webkit-scrollbar-thumb { background: #94a3b8; }
         
         .animate-fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -144,7 +144,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             </div>
             <div>
-                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens PDF条码处理工作台 <span class="text-brand-600">Pro v3.2</span></h1>
+                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens PDF条码处理工作台 <span class="text-brand-600">Pro v3.3</span></h1>
                 <p class="text-xs text-slate-400 font-medium">智能识别 · 精准提取 · 高效自动化</p>
             </div>
         </div>
@@ -193,7 +193,7 @@
                 </h2>
             </div>
             
-            <!-- 修改后的文件载入区域：上下分栏布局 -->
+            <!-- 文件载入区域：上下分栏布局 (保持您要求的布局) -->
             <div class="flex-1 px-6 py-4 flex flex-col min-h-0">
                 <div id="dropArea" class="flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 bg-dot-pattern relative group transition-all duration-300 hover:border-brand-400 hover:bg-brand-50/30 overflow-hidden flex flex-col p-4 gap-3">
                     
@@ -239,9 +239,14 @@
                     <button id="startBtn" onclick="startProcessing()" disabled class="col-span-1 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold shadow-lg shadow-slate-200 flex items-center justify-center gap-2"><span>▶️</span> 开始深度识别</button>
                     <button id="stopBtn" onclick="stopTask()" disabled class="col-span-1 bg-white border border-rose-100 text-rose-500 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold flex items-center justify-center">停止</button>
                 </div>
-                <button onclick="clearAll()" class="w-full text-xs text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1 py-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg> 清空重置页面内容
-                </button>
+                <div class="grid grid-cols-2 gap-3">
+                     <button onclick="clearAll()" class="col-span-1 w-full text-xs text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1 py-2 border border-slate-100 rounded-lg hover:bg-slate-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg> 清空重置
+                    </button>
+                    <button onclick="toggleHistoryModal()" class="col-span-1 w-full text-xs text-brand-500 hover:text-brand-700 flex items-center justify-center gap-1 py-2 border border-brand-100 bg-brand-50 rounded-lg hover:bg-brand-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 历史记录
+                    </button>
+                </div>
             </div>
         </aside>
 
@@ -294,6 +299,23 @@
         </div>
     </div>
 
+    <!-- 历史记录面板 (新增) -->
+    <div id="historyModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-[160] animate-fade-in">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl border border-slate-100 max-w-lg w-full max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 shrink-0">
+                <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">📜 历史数据记录 (最近10次)</h3>
+                <button onclick="toggleHistoryModal()" class="text-slate-400 hover:text-slate-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+            </div>
+            <div id="historyListContainer" class="overflow-y-auto pr-2 space-y-3 flex-1 history-scroll">
+                <!-- 历史条目将在这里动态生成 -->
+                <div class="text-center text-slate-400 py-10 text-sm">暂无历史记录</div>
+            </div>
+            <div class="pt-4 border-t border-slate-100 mt-4 text-xs text-center text-slate-400">
+                点击“恢复”将覆盖当前页面的提取结果
+            </div>
+        </div>
+    </div>
+
     <!-- 管理员面板 -->
     <div id="adminModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-[150] animate-fade-in">
         <div class="bg-white p-8 rounded-2xl shadow-2xl border border-slate-100 max-w-2xl w-full max-h-[80vh] flex flex-col">
@@ -334,7 +356,7 @@
 
 <script>
     // ==========================================
-    // 1. Supabase 配置 (已预填)
+    // 1. Supabase 配置
     // ==========================================
     const YOUR_SUPABASE_URL = 'https://qzvnxshmanuiqeljxywm.supabase.co';
     const YOUR_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dm54c2htYW51aXFlbGp4eXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwNzYzNDIsImV4cCI6MjA4MTY1MjM0Mn0.wpVInI3YQrgo51BraYYdvcEkQWZk-TR3D3VD6QKxa2s';
@@ -343,17 +365,17 @@
     const db = createClient(YOUR_SUPABASE_URL, YOUR_SUPABASE_KEY);
 
     // ==========================================
-    // 2. 全局变量与 UI 引用 (统一声明区)
+    // 2. 全局变量与 UI 引用
     // ==========================================
-    // 状态变量
     let currentUser = null;
     let QWEN_API_KEY = "";
     let isApiKeyEnabled = false; 
     const SESSION_KEY = "sxz_session_v1";
+    const HISTORY_KEY = "sxz_history_log_v1"; // 历史记录 Key
     let fileQueue = [];
     let shouldStop = false; 
 
-    // UI 元素引用 (确保这里定义了，下面才能用)
+    // UI 元素引用
     const fileInput = document.getElementById('fileInput');
     const uploadBtn = document.getElementById('uploadBtn'); 
     const startBtn = document.getElementById('startBtn'); 
@@ -381,7 +403,7 @@
     const messageContent = document.getElementById('messageContent');
 
     // ==========================================
-    // 3. 初始化逻辑 (入口)
+    // 3. 初始化逻辑
     // ==========================================
     window.addEventListener('DOMContentLoaded', async () => {
         initEyeIconEvents();
@@ -401,7 +423,7 @@
     });
 
     // ==========================================
-    // 4. 事件绑定逻辑 (集中管理)
+    // 4. 事件绑定逻辑
     // ==========================================
     function bindEventListeners() {
         if(uploadBtn) uploadBtn.addEventListener('click', () => fileInput.click());
@@ -522,15 +544,11 @@
             document.getElementById('fileNameDisplay').innerText = file.name; 
             
             if (file.type === 'application/pdf') { 
-                // PDF：上方显示PDF图标卡片，下方显示“等待预览”
                 placeholder.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center w-32 animate-fade-in"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-slate-700 mb-2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><div class="text-xs font-bold text-slate-700">PDF 文档</div><div class="text-[10px] text-slate-400 truncate w-full text-center mt-0.5" title="${file.name}">${file.name}</div></div>`;
-                
                 previewImg.style.display = 'none';
                 if(emptyText) emptyText.style.display = 'block';
             } else { 
-                // 图片：上方显示图片图标，下方直接显示图片
                 placeholder.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center w-32 animate-fade-in"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-brand-600 mb-2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div class="text-xs font-bold text-slate-700">图片文件</div><div class="text-[10px] text-slate-400 truncate w-full text-center mt-0.5">${file.name}</div></div>`;
-                
                 const reader = new FileReader(); 
                 reader.onload = e => { 
                     previewImg.src = e.target.result; 
@@ -541,7 +559,6 @@
             } 
         }
 
-        // 按钮唤醒
         resultArea.value = ''; ocrResultArea.value = ''; updateBarcodeCount(); document.getElementById('pageCountDisplay').innerText = "0"; 
         const canvasOverlay = document.getElementById('canvasOverlay');
         const ctxOverlay = canvasOverlay.getContext('2d');
@@ -583,17 +600,20 @@
             } catch (err) { console.error(`Error processing file ${currentFile.name}:`, err); }
         }
         
-        if (shouldStop) updateProgress("已停止", "用户终止操作", null, 'stopped'); 
-        else { 
+        if (shouldStop) {
+            updateProgress("已停止", "用户终止操作", null, 'stopped'); 
+        } else { 
             updateProgress("全部完成", `已处理 ${fileQueue.length} 个文件`, null, 'success'); 
             document.getElementById('fileNameDisplay').innerText = `处理完成: 共 ${fileQueue.length} 个文件`; 
+            // 自动保存历史记录
+            saveHistory(fileQueue.length + "个文件", resultArea.value, ocrResultArea.value);
         }
         
         startBtn.disabled = false; stopBtn.disabled = true; startBtn.innerHTML = "<span>▶️</span> 开始深度识别"; startBtn.classList.remove('opacity-70', 'cursor-wait'); shouldStop = false;
     }
 
     // ==========================================
-    // 7. 管理员与系统逻辑
+    // 7. 管理员与系统逻辑 (含修改密码)
     // ==========================================
 
     async function loadUserList() {
@@ -613,9 +633,30 @@
         data.forEach(user => {
             const isUserAdmin = (user.role === 'SXZadmin');
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-700">${user.username}</td><td class="px-4 py-3 text-slate-500">${user.remark || '-'}</td><td class="px-4 py-3 text-xs"><span class="${isUserAdmin ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'} px-2 py-0.5 rounded-full font-bold">${isUserAdmin ? '管理员' : '员工'}</span></td><td class="px-4 py-3 text-right">${!isUserAdmin ? `<button onclick="deleteUser('${user.username}')" class="text-rose-500 hover:text-rose-700 text-xs font-bold px-2 py-1 rounded hover:bg-rose-50 transition">删除</button>` : '<span class="text-slate-300 text-xs">系统</span>'}</td>`;
+            // 新增“修改密码”按钮
+            const actionButtons = !isUserAdmin ? 
+                `<div class="flex items-center justify-end gap-2">
+                    <button onclick="changeUserPassword('${user.username}')" class="text-brand-500 hover:text-brand-700 text-xs font-bold px-2 py-1 rounded hover:bg-brand-50 transition">修改密码</button>
+                    <button onclick="deleteUser('${user.username}')" class="text-rose-500 hover:text-rose-700 text-xs font-bold px-2 py-1 rounded hover:bg-rose-50 transition">删除</button>
+                 </div>` : 
+                '<span class="text-slate-300 text-xs">系统管理员</span>';
+                
+            tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-700">${user.username}</td><td class="px-4 py-3 text-slate-500">${user.remark || '-'}</td><td class="px-4 py-3 text-xs"><span class="${isUserAdmin ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'} px-2 py-0.5 rounded-full font-bold">${isUserAdmin ? '管理员' : '员工'}</span></td><td class="px-4 py-3 text-right">${actionButtons}</td>`;
             tbody.appendChild(tr);
         });
+    }
+
+    async function changeUserPassword(username) {
+        const newPass = prompt(`请输入用户 [${username}] 的新密码:`);
+        if (newPass === null) return; // 用户取消
+        if (newPass.trim() === "") { alert("密码不能为空"); return; }
+        
+        const { error } = await db.from('app_users').update({ password: newPass.trim() }).eq('username', username);
+        if (error) {
+            alert("修改失败: " + error.message);
+        } else {
+            alert("密码修改成功！");
+        }
     }
 
     async function deleteUser(username) {
@@ -656,7 +697,91 @@
     }
 
     // ==========================================
-    // 8. 辅助函数 (UI & 工具)
+    // 8. 历史记录逻辑 (新增)
+    // ==========================================
+
+    function toggleHistoryModal() {
+        const modal = document.getElementById('historyModal');
+        if (modal.classList.contains('hidden')) { 
+            renderHistoryList();
+            modal.classList.remove('hidden'); modal.classList.add('flex'); 
+        } else { 
+            modal.classList.remove('flex'); modal.classList.add('hidden'); 
+        }
+    }
+
+    function saveHistory(title, barcodeData, ocrData) {
+        // 如果两个框都为空，不保存
+        if (!barcodeData.trim() && !ocrData.trim()) return;
+
+        let history = [];
+        try {
+            history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        } catch (e) { history = []; }
+
+        const newRecord = {
+            id: Date.now(),
+            time: new Date().toLocaleString(),
+            title: title || "未知文件",
+            barcode: barcodeData,
+            ocr: ocrData
+        };
+
+        // 插入最前面
+        history.unshift(newRecord);
+        // 只保留最近10条
+        if (history.length > 10) history = history.slice(0, 10);
+        
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    }
+
+    function renderHistoryList() {
+        const container = document.getElementById('historyListContainer');
+        let history = [];
+        try {
+            history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        } catch (e) { history = []; }
+
+        if (history.length === 0) {
+            container.innerHTML = '<div class="text-center text-slate-400 py-10 text-sm">暂无历史记录</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        history.forEach(item => {
+            const div = document.createElement('div');
+            div.className = "bg-slate-50 hover:bg-white border border-slate-100 hover:border-brand-200 p-3 rounded-xl transition cursor-pointer group";
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-xs font-bold text-slate-600">${item.time}</span>
+                    <button onclick="restoreHistoryItem(${item.id})" class="text-[10px] bg-white border border-slate-200 text-slate-500 px-2 py-0.5 rounded hover:bg-brand-500 hover:text-white transition">恢复</button>
+                </div>
+                <div class="text-xs text-slate-400 mb-2 truncate">${item.title}</div>
+                <div class="flex gap-2">
+                    <span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded">条码: ${item.barcode.length > 20 ? '有数据' : '空'}</span>
+                    <span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded">OCR: ${item.ocr.length > 20 ? '有数据' : '空'}</span>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function restoreHistoryItem(id) {
+        let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        const item = history.find(i => i.id === id);
+        if (item) {
+            if(confirm('恢复历史记录将覆盖当前页面上的所有提取结果，确定吗？')) {
+                resultArea.value = item.barcode;
+                ocrResultArea.value = item.ocr;
+                updateBarcodeCount();
+                toggleHistoryModal(); // 关闭弹窗
+                showMessageBox("恢复成功", "历史数据已加载到编辑框", "success");
+            }
+        }
+    }
+
+    // ==========================================
+    // 9. 辅助函数 (UI & 工具)
     // ==========================================
     
     function toggleApiKeyUsage() {
