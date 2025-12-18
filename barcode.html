@@ -77,7 +77,7 @@
 </head>
 <body class="bg-[#f3f4f6] text-slate-800 min-h-screen flex flex-col antialiased selection:bg-brand-500/30">
 
-    <!-- 1. 顶部导航栏 (模仿参考图) -->
+    <!-- 1. 顶部导航栏 -->
     <header class="bg-white h-[72px] border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 shadow-sm shrink-0">
         <div class="flex items-center gap-4">
             <!-- 品牌 Logo -->
@@ -96,7 +96,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             </button>
             
-            <!-- API 状态胶囊 (模仿 API READY) -->
+            <!-- API 状态胶囊 -->
             <div id="apiStatusIndicator" onclick="toggleSettings()" class="flex items-center gap-2 px-4 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold tracking-wide cursor-pointer transition-colors border border-transparent">
                 <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
                 <span id="apiStatusText">API CONFIG</span>
@@ -104,10 +104,10 @@
         </div>
     </header>
 
-    <!-- 主内容区域: 左右分栏布局 -->
+    <!-- 主内容区域 -->
     <main class="flex-1 max-w-[1920px] w-full mx-auto p-6 grid grid-cols-12 gap-6 overflow-hidden min-h-0">
 
-        <!-- 左侧栏: 数据载入与控制 (模仿参考图左侧) -->
+        <!-- 左侧栏: 数据载入与控制 -->
         <aside class="col-span-12 lg:col-span-4 xl:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-full max-h-[calc(100vh-120px)]">
             
             <!-- 标题区 -->
@@ -118,7 +118,7 @@
                 </h2>
             </div>
 
-            <!-- 拖拽上传区 (核心视觉点) -->
+            <!-- 拖拽上传区 -->
             <div class="flex-1 px-6 py-4 flex flex-col min-h-0">
                 <div id="dropArea" class="flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 bg-dot-pattern relative group transition-all duration-300 hover:border-brand-400 hover:bg-brand-50/30 overflow-hidden flex flex-col">
                     
@@ -134,7 +134,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
                             </div>
                             <p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p>
-                            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (最高支持50MB)</p>
+                            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (支持批量选择)</p>
                         </span>
                         
                         <div class="preview-container w-full h-full">
@@ -143,10 +143,10 @@
                         </div>
                     </div>
                 </div>
-                <input type="file" id="fileInput" accept="image/*,application/pdf" class="hidden">
+                <input type="file" id="fileInput" accept="image/*,application/pdf" multiple class="hidden">
             </div>
 
-            <!-- 控制按钮组 (放置在底部，模仿参考图的大按钮) -->
+            <!-- 控制按钮组 -->
             <div class="p-6 pt-2 space-y-3 bg-white border-t border-slate-100 z-10">
                 <button id="uploadBtn" class="w-full py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -169,10 +169,10 @@
             </div>
         </aside>
 
-        <!-- 右侧栏: 结果展示 (模仿参考图右侧) -->
+        <!-- 右侧栏: 结果展示 -->
         <div class="col-span-12 lg:col-span-8 xl:col-span-9 flex flex-col gap-6 h-full min-h-0 overflow-y-auto pr-1 pb-1">
             
-            <!-- 1. 统计卡片区 (模仿参考图顶部卡片) -->
+            <!-- 1. 统计卡片区 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
                 <!-- 蓝色卡片 -->
                 <div class="bg-brand-600 rounded-2xl p-5 text-white shadow-lg shadow-brand-500/20 relative overflow-hidden group">
@@ -198,7 +198,7 @@
                 </div>
             </div>
 
-            <!-- 2. 进度条 (集成在中间) -->
+            <!-- 2. 进度条 -->
             <div id="progressSection" class="hidden bg-white border border-slate-100 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm animate-fade-in">
                 <div id="progressIconContainer" class="w-6 h-6 rounded-full flex items-center justify-center text-brand-600">
                     <svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
@@ -210,7 +210,7 @@
                 <div id="pageBadge" class="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600 hidden">0/0</div>
             </div>
 
-            <!-- 3. 结果内容区 (模仿参考图的两个白色区域) -->
+            <!-- 3. 结果内容区 -->
             <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
                 
                 <!-- 条码明细 -->
@@ -218,7 +218,9 @@
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
                         <h3 class="font-bold text-brand-600 text-sm flex items-center gap-2">
                             条码明细 - 提取区
-                            <span class="text-[10px] text-slate-400 font-normal px-2 py-0.5 bg-slate-50 rounded-full">纯数值</span>
+                            <span class="text-[10px] text-brand-600 font-bold px-2 py-0.5 bg-brand-50 rounded-full border border-brand-100">
+                                共 <span id="barcodeDetailCount">0</span> 条
+                            </span>
                         </h3>
                         <button onclick="copyResults('resultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -250,7 +252,7 @@
     
     <canvas id="canvasHidden"></canvas>
 
-    <!-- 消息框 (样式优化) -->
+    <!-- 消息框 -->
     <div id="messageBox" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-50 animate-fade-in">
         <div class="bg-white p-6 rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full transform transition-all scale-100">
             <h3 id="messageTitle" class="text-lg font-bold mb-2 text-slate-800 flex items-center gap-2">提示</h3>
@@ -259,7 +261,7 @@
         </div>
     </div>
 
-    <!-- API 设置 模态框 (样式优化) -->
+    <!-- API 设置 模态框 -->
     <div id="settingsModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-50 animate-fade-in">
         <div class="bg-white p-8 rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full transform transition-all scale-100">
             <div class="flex justify-between items-center mb-6">
@@ -275,7 +277,10 @@
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Qwen API Key (DashScope)</label>
                 <div class="relative">
                     <input type="password" id="apiKeyInput" placeholder="sk-..." 
-                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all text-slate-700">
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all text-slate-700 pr-10">
+                    <button onclick="clearApiKey()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition p-1" title="清空 Key">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
                 </div>
                 <p class="text-xs text-slate-400 mt-2 leading-relaxed">
                     Key 仅保存在本地浏览器中，用于调用阿里云通义千问视觉模型。
@@ -323,14 +328,13 @@
     const settingsModal = document.getElementById('settingsModal');
     const apiKeyInput = document.getElementById('apiKeyInput');
 
-    let currentFile = null;
+    let fileQueue = [];
     let shouldStop = false; 
 
     // --- 2. API 配置与工具函数 ---
     
     let QWEN_API_KEY = localStorage.getItem('QWEN_API_KEY') || "";
 
-    // API Key 状态指示灯逻辑 (样式对应修改)
     function updateApiStatus() {
         const indicator = document.getElementById('apiStatusIndicator');
         const dot = document.getElementById('apiStatusDot');
@@ -347,7 +351,6 @@
         }
     }
 
-    // 初始化时调用一次
     updateApiStatus();
 
     function toggleSettings() {
@@ -361,10 +364,19 @@
         }
     }
 
+    function clearApiKey() {
+        apiKeyInput.value = "";
+        apiKeyInput.focus();
+    }
+
     function saveSettings() {
         const key = apiKeyInput.value.trim();
         if (!key) {
-            showMessageBox("提示", "API Key 不能为空", "error");
+            QWEN_API_KEY = "";
+            localStorage.removeItem('QWEN_API_KEY');
+            toggleSettings();
+            updateApiStatus();
+            showMessageBox("配置已更新", "API Key 已清空", "success");
             return;
         }
         QWEN_API_KEY = key;
@@ -391,12 +403,18 @@
         messageBox.classList.add('hidden');
     }
 
-    // 更新条码数量显示 (同时更新顶部的蓝色大卡片)
     function updateBarcodeCount() {
         const val = resultArea.value;
-        const count = val.split('\n').filter(line => line.trim() !== '').length;
+        const lines = val.split('\n');
+        const count = lines.filter(line => line.trim() !== '' && !line.trim().startsWith('【')).length;
+        
         barcodeCountBadge.innerText = count;
-        barcodeCountBadgeDisplay.innerText = count; // 更新大数字
+        barcodeCountBadgeDisplay.innerText = count; 
+        
+        const detailCountSpan = document.getElementById('barcodeDetailCount');
+        if (detailCountSpan) {
+            detailCountSpan.innerText = count;
+        }
     }
 
     function updateProgress(mainText, subText = "", pageInfo = null, statusType = 'loading') {
@@ -407,13 +425,13 @@
         if (pageInfo) {
             pageBadge.classList.remove('hidden');
             pageBadge.innerText = `${pageInfo.current} / ${pageInfo.total}`;
-            pageCountDisplay.innerText = pageInfo.current; // 更新顶部白色卡片
+            if (pageInfo.total > 0) {
+            }
         } else {
             pageBadge.classList.add('hidden');
         }
 
-        // 图标控制逻辑
-        progressIconContainer.className = "w-6 h-6 rounded-full flex items-center justify-center"; // Reset
+        progressIconContainer.className = "w-6 h-6 rounded-full flex items-center justify-center"; 
         
         let svgContent = '';
         
@@ -689,15 +707,24 @@
             
             if (QWEN_API_KEY) {
                 try {
-                    const ocrText = await runOCR(fullPageBase64);
+                    let ocrText = await runOCR(fullPageBase64);
                     if (shouldStop) return; 
 
-                    let separator = "";
-                    if (ocrResultArea.value.length > 0) {
-                        separator = "\n"; 
+                    // 修改：OCR结果处理 - 清洗空行
+                    // 将所有换行符标准化为\n，然后过滤掉空行
+                    ocrText = ocrText.replace(/(\r\n|\n|\r)/gm, "\n");
+                    ocrText = ocrText.split('\n').filter(line => line.trim() !== '').join('\n');
+
+                    // 修改：智能拼接，防止标头后出现双重换行
+                    if (ocrText.length > 0) {
+                        // 如果当前文本区不为空且不以换行符结尾，则添加换行符
+                        if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) {
+                            ocrResultArea.value += '\n';
+                        }
+                        ocrResultArea.value += ocrText;
+                        ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
                     }
-                    ocrResultArea.value += separator + ocrText;
-                    ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
+
                 } catch (e) {
                     console.warn("OCR Failed internally:", e);
                 }
@@ -755,22 +782,10 @@
                 }
             }
 
-            if (shouldStop) {
-                updateProgress("已停止", "用户终止操作", null, 'stopped');
-            } else {
-                updateProgress("处理完成", `共 ${pdf.numPages} 页`, { current: pdf.numPages, total: pdf.numPages }, 'success');
-            }
-
         } catch (error) {
             console.error(error);
             showMessageBox("PDF 错误", error.message, "error");
-            updateProgress("发生错误", "处理已终止", null, 'error');
-        } finally {
-            startBtn.disabled = false; 
-            stopBtn.disabled = true; 
-            startBtn.innerHTML = "<span>▶️</span> 开始深度识别";
-            startBtn.classList.remove('opacity-70', 'cursor-wait');
-            shouldStop = false;
+            throw error; 
         }
     }
 
@@ -785,20 +800,53 @@
 
     // --- 事件监听与流程控制 ---
 
-    function handleFileSelect(file) {
-        if (!file) return;
+    function handleFilesSelect(files) {
+        if (!files || files.length === 0) return;
         
-        if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) {
-            showMessageBox("格式错误", "不支持的文件格式。", "error");
+        const validFiles = Array.from(files).filter(file => 
+            file.type === 'application/pdf' || file.type.startsWith('image/')
+        );
+
+        if (validFiles.length === 0) {
+            showMessageBox("格式错误", "没有找到支持的文件格式 (PDF/图片)。", "error");
             return;
         }
 
-        currentFile = file;
+        fileQueue = validFiles;
         shouldStop = false;
         
         placeholder.style.display = 'none';
         fileNameDisplay.classList.remove('hidden');
-        fileNameDisplay.innerText = file.name;
+        
+        if (validFiles.length > 1) {
+            fileNameDisplay.innerText = `已就绪 ${validFiles.length} 个文件`;
+            previewImg.style.display = 'none';
+            placeholder.style.display = 'block';
+            placeholder.innerHTML = `
+                <div class="mb-2 text-4xl">📚</div>
+                <div class="text-sm text-slate-500 font-bold mt-2">批量任务已就绪</div>
+                <div class="text-xs text-slate-400 mt-1">共 ${validFiles.length} 个文件等待处理</div>
+            `;
+        } else {
+            const file = validFiles[0];
+            fileNameDisplay.innerText = file.name;
+            if (file.type === 'application/pdf') {
+                previewImg.style.display = 'none';
+                placeholder.style.display = 'block';
+                placeholder.innerHTML = `
+                    <div class="mb-2 text-4xl">📄</div>
+                    <div class="text-sm text-slate-500 font-bold mt-2">PDF 文档已就绪</div>
+                    <div class="text-xs text-slate-400 mt-1">${file.name}</div>
+                `;
+            } else {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    previewImg.src = e.target.result;
+                    previewImg.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
 
         resultArea.value = '';
         ocrResultArea.value = '';
@@ -806,36 +854,37 @@
         pageCountDisplay.innerText = "0"; // 重置页数
         ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
         
-        updateProgress("文件就绪", "点击开始深度识别", null, 'idle');
+        updateProgress("文件就绪", `等待处理 ${validFiles.length} 个文件`, null, 'idle');
         
         startBtn.disabled = false;
         stopBtn.disabled = true; 
         startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
 
-        if (file.type === 'application/pdf') {
-            previewImg.style.display = 'none';
-            placeholder.style.display = 'block';
-            placeholder.innerHTML = `
-                <div class="mb-2 text-4xl">📄</div>
-                <div class="text-sm text-slate-500 font-bold mt-2">PDF 文档已就绪</div>
-                <div class="text-xs text-slate-400 mt-1">${file.name}</div>
-            `;
-        } else {
-            const reader = new FileReader();
-            reader.onload = e => {
-                previewImg.src = e.target.result;
-                previewImg.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
+    // 辅助函数：添加文件名标头到结果区
+    function appendFileHeader(filename) {
+        // 条码区标头 - 修改：去除额外空行，仅确保换行
+        if (resultArea.value.length > 0 && !resultArea.value.endsWith('\n')) {
+            resultArea.value += '\n';
         }
+        // 删除之前这里存在的额外换行符逻辑
+        resultArea.value += `【${filename}】\n`;
+        resultArea.scrollTop = resultArea.scrollHeight;
+
+        // OCR区标头 - 修改：去除额外空行
+        if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) {
+            ocrResultArea.value += '\n';
+        }
+        // 删除之前这里存在的额外换行符逻辑
+        ocrResultArea.value += `【${filename}】\n`;
+        ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
     }
 
     async function startProcessing() {
-        if (!currentFile) return;
+        if (!fileQueue || fileQueue.length === 0) return;
 
         if (!QWEN_API_KEY || QWEN_API_KEY.trim() === "") {
             const userWantsToSet = confirm("⚠️ 检测到您尚未配置 API Key。\n\n• 如果您需要使用「AI 文字识别」功能，请点击【确定】前往设置。\n• 如果您仅需使用「条码扫描」功能，请点击【取消】直接开始。");
-            
             if (userWantsToSet) {
                 toggleSettings();
                 return; 
@@ -853,47 +902,72 @@
         updateBarcodeCount(); 
         pageCountDisplay.innerText = "0";
         
-        if (currentFile.type === 'application/pdf') {
-            await processPdfFile(currentFile);
-        } else {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                await Promise.race([
-                    processImage(e.target.result),
-                    new Promise(r => setTimeout(r, 20000))
-                ]);
-                
-                if (shouldStop) {
-                    updateProgress("已停止", "用户终止操作", null, 'stopped');
+        for (let i = 0; i < fileQueue.length; i++) {
+            if (shouldStop) break;
+
+            const currentFile = fileQueue[i];
+            
+            fileNameDisplay.innerText = `正在处理 (${i+1}/${fileQueue.length}): ${currentFile.name}`;
+            updateProgress(`正在处理文件 ${i+1}/${fileQueue.length}`, currentFile.name, null, 'loading');
+
+            appendFileHeader(currentFile.name);
+
+            try {
+                if (currentFile.type === 'application/pdf') {
+                    await processPdfFile(currentFile);
                 } else {
-                    updateProgress("处理完成", "任务结束", null, 'success');
+                    await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            try {
+                                await Promise.race([
+                                    processImage(e.target.result),
+                                    new Promise(r => setTimeout(r, 20000))
+                                ]);
+                                resolve();
+                            } catch (err) { reject(err); }
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(currentFile);
+                    });
                 }
-                
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-                startBtn.innerHTML = "<span>▶️</span> 开始深度识别";
-                startBtn.classList.remove('opacity-70', 'cursor-wait');
-                shouldStop = false;
-            };
-            reader.readAsDataURL(currentFile);
+            } catch (err) {
+                console.error(`Error processing file ${currentFile.name}:`, err);
+            }
         }
+        
+        if (shouldStop) {
+            updateProgress("已停止", "用户终止操作", null, 'stopped');
+        } else {
+            updateProgress("全部完成", `已处理 ${fileQueue.length} 个文件`, null, 'success');
+            fileNameDisplay.innerText = `处理完成: 共 ${fileQueue.length} 个文件`;
+        }
+        
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        startBtn.innerHTML = "<span>▶️</span> 开始深度识别";
+        startBtn.classList.remove('opacity-70', 'cursor-wait');
+        shouldStop = false;
     }
 
     uploadBtn.addEventListener('click', () => fileInput.click());
     
     fileInput.addEventListener('change', e => {
-        if(e.target.files[0]) handleFileSelect(e.target.files[0]);
+        if(e.target.files && e.target.files.length > 0) handleFilesSelect(e.target.files);
         fileInput.value = '';
     });
 
     document.addEventListener('paste', e => {
         const items = e.clipboardData.items;
+        const files = [];
         for (let item of items) {
             if (item.type.indexOf('image') !== -1) {
-                handleFileSelect(item.getAsFile());
-                e.preventDefault(); 
-                break;
+                files.push(item.getAsFile());
             }
+        }
+        if (files.length > 0) {
+            handleFilesSelect(files);
+            e.preventDefault(); 
         }
     });
 
@@ -916,7 +990,7 @@
         const dt = e.dataTransfer;
         const files = dt.files;
         if (files.length > 0) {
-            handleFileSelect(files[0]);
+            handleFilesSelect(files);
         }
     }, false);
 
@@ -926,7 +1000,7 @@
     }
 
     function clearAll() {
-        currentFile = null;
+        fileQueue = []; // 清空队列
         resultArea.value = '';
         ocrResultArea.value = '';
         updateBarcodeCount(); 
@@ -939,7 +1013,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
             </div>
             <p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p>
-            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (最高支持50MB)</p>
+            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (支持批量选择)</p>
         `;
         fileNameDisplay.classList.add('hidden');
         ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
