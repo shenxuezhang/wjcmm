@@ -10,6 +10,8 @@
     <script src="https://unpkg.com/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
     <!-- 引入 PDF.js 用于解析 PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- 引入 Supabase 客户端库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -24,6 +26,7 @@
 
         #canvasHidden { display: none; } 
         
+        /* 预览容器样式调整 */
         .preview-container { 
             position: relative; 
             width: 100%; 
@@ -38,11 +41,13 @@
             top: 0;
             left: 0;
             pointer-events: none;
+            width: 100%;
+            height: 100%;
         }
         #previewImg {
             max-width: 100%;
             max-height: 100%;
-            object-fit: contain;
+            object-fit: contain; 
             display: none;
             transition: opacity 0.3s ease;
         }
@@ -55,6 +60,27 @@
         
         .animate-fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 登录遮罩层 */
+        #loginOverlay {
+            position: fixed;
+            inset: 0;
+            background-color: #f3f4f6;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .no-select { user-select: none; -webkit-user-select: none; }
+
+        /* Toggle Switch (API开关样式) */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #10b981;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #10b981;
+        }
     </style>
     <script>
         tailwind.config = {
@@ -77,174 +103,181 @@
 </head>
 <body class="bg-[#f3f4f6] text-slate-800 min-h-screen flex flex-col antialiased selection:bg-brand-500/30">
 
+    <!-- 0. 登录遮罩层 -->
+    <div id="loginOverlay">
+        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full border border-slate-200 text-center">
+            <div class="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-500/20 mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">SmartLens Pro</h2>
+            <p class="text-sm text-slate-400 mb-6">企业级条码处理工作台</p>
+            
+            <div class="space-y-4 text-left">
+                <!-- 账号 -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">账号</label>
+                    <input type="text" id="loginUser" onkeydown="handleEnter(event)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500 transition">
+                </div>
+                <!-- 密码 (带眼睛) -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">密码</label>
+                    <div class="relative">
+                        <input type="password" id="loginPass" onkeydown="handleEnter(event)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500 transition pr-10">
+                        <!-- 眼睛按钮：长按显示 -->
+                        <button id="eyeBtn" type="button" class="absolute right-0 top-0 bottom-0 px-3 text-slate-400 hover:text-slate-600 flex items-center cursor-pointer no-select" title="长按显示密码">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                    </div>
+                </div>
+                <button onclick="handleLogin()" id="loginBtn" class="w-full bg-slate-900 text-white py-2.5 rounded-lg font-bold hover:bg-slate-800 transition shadow-lg mt-2">
+                    登录系统
+                </button>
+                <p id="loginMsg" class="text-xs text-rose-500 text-center h-4"></p>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. 顶部导航栏 -->
     <header class="bg-white h-[72px] border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 shadow-sm shrink-0">
         <div class="flex items-center gap-4">
-            <!-- 品牌 Logo -->
             <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             </div>
             <div>
-                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens PDF条码处理工作台 <span class="text-brand-600">Pro v3.1</span></h1>
+                <h1 class="text-xl font-bold text-slate-800 tracking-tight">SmartLens PDF条码处理工作台 <span class="text-brand-600">Pro v3.2</span></h1>
                 <p class="text-xs text-slate-400 font-medium">智能识别 · 精准提取 · 高效自动化</p>
             </div>
         </div>
 
         <div class="flex items-center gap-4">
-            <!-- 设置按钮 -->
-            <button onclick="toggleSettings()" class="p-2 text-slate-400 hover:text-slate-600 transition-colors rounded-full hover:bg-slate-100">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <!-- API 开关 -->
+            <div class="flex items-center gap-2 mr-2 border-r border-slate-100 pr-4">
+                <span class="text-xs font-bold text-slate-400">AI 功能</span>
+                <div class="relative inline-block w-10 align-middle select-none transition duration-200 ease-in">
+                    <input type="checkbox" name="toggle" id="apiKeyToggle" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 transition-all duration-300 left-0" onchange="toggleApiKeyUsage()"/>
+                    <label for="apiKeyToggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-300 cursor-pointer transition-colors duration-300"></label>
+                </div>
+                <!-- 状态胶囊 -->
+                <div id="apiStatusIndicator" class="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold tracking-wide transition-colors border border-transparent">
+                    <span id="apiStatusDot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                    <span id="apiStatusText">OFF</span>
+                </div>
+            </div>
+
+            <!-- 用户信息 -->
+            <div class="text-right hidden md:block">
+                <div id="currentUserDisplay" class="text-sm font-bold text-slate-700">未登录</div>
+                <div id="currentRoleDisplay" class="text-[10px] text-slate-400 font-mono uppercase">GUEST</div>
+            </div>
+
+            <!-- 管理员按钮 -->
+            <button id="adminBtn" onclick="toggleAdminPanel()" class="hidden px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                账号管理
             </button>
             
-            <!-- API 状态胶囊 -->
-            <div id="apiStatusIndicator" onclick="toggleSettings()" class="flex items-center gap-2 px-4 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold tracking-wide cursor-pointer transition-colors border border-transparent">
-                <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-                <span id="apiStatusText">API CONFIG</span>
-            </div>
+            <button onclick="handleLogout()" class="p-2 text-rose-400 hover:text-rose-600 transition-colors rounded-full hover:bg-rose-50" title="退出登录">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            </button>
         </div>
     </header>
 
     <!-- 主内容区域 -->
     <main class="flex-1 max-w-[1920px] w-full mx-auto p-6 grid grid-cols-12 gap-6 overflow-hidden min-h-0">
-
-        <!-- 左侧栏: 数据载入与控制 -->
+        <!-- 左侧栏 -->
         <aside class="col-span-12 lg:col-span-4 xl:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-full max-h-[calc(100vh-120px)]">
-            
-            <!-- 标题区 -->
             <div class="p-6 pb-2">
                 <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
                     <span class="w-1.5 h-6 bg-brand-600 rounded-full"></span>
                     数据文件载入
                 </h2>
             </div>
-
-            <!-- 拖拽上传区 -->
+            
+            <!-- 修改后的文件载入区域：上下分栏布局 -->
             <div class="flex-1 px-6 py-4 flex flex-col min-h-0">
-                <div id="dropArea" class="flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 bg-dot-pattern relative group transition-all duration-300 hover:border-brand-400 hover:bg-brand-50/30 overflow-hidden flex flex-col">
+                <div id="dropArea" class="flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 bg-dot-pattern relative group transition-all duration-300 hover:border-brand-400 hover:bg-brand-50/30 overflow-hidden flex flex-col p-4 gap-3">
                     
-                    <!-- 文件名浮层 -->
-                    <div id="fileNameDisplay" class="absolute top-3 left-3 right-3 text-center bg-white/90 backdrop-blur-sm shadow-sm py-1.5 px-3 rounded-lg text-xs font-semibold text-slate-600 truncate border border-slate-100 z-10 hidden">
+                    <!-- 1. 文件名显示区域（顶部） -->
+                    <div id="fileNameDisplay" class="w-full text-center bg-white shadow-sm py-2 px-3 rounded-lg text-xs font-semibold text-slate-600 truncate border border-slate-100 hidden shrink-0">
                         filename.pdf
                     </div>
 
-                    <!-- 预览容器 -->
-                    <div class="flex-1 flex items-center justify-center overflow-hidden p-2 relative">
-                        <span id="placeholder" class="text-slate-400 text-center pointer-events-none p-6">
-                            <div class="mb-3 text-4xl opacity-30 mx-auto w-16 h-16 flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-                            </div>
-                            <p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p>
-                            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (支持批量选择)</p>
-                        </span>
+                    <!-- 2. 内容布局：上（文件信息）下（预览图） -->
+                    <div class="flex-1 flex flex-col gap-3 min-h-0 relative">
                         
-                        <div class="preview-container w-full h-full">
-                            <img id="previewImg" class="rounded shadow-sm">
-                            <canvas id="canvasOverlay"></canvas>
+                        <!-- A. 文件/占位符区域 (固定高度或自适应) -->
+                        <div id="placeholder" class="shrink-0 flex items-center justify-center min-h-[140px] transition-all duration-300">
+                             <!-- 默认拖拽提示内容 -->
+                             <div class="text-center pointer-events-none p-2">
+                                <div class="mb-3 text-4xl opacity-30 mx-auto w-16 h-16 flex items-center justify-center bg-white rounded-full shadow-sm">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                                </div>
+                                <p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p>
+                                <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG</p>
+                            </div>
                         </div>
+
+                        <!-- B. 预览图区域 (占据剩余空间) -->
+                        <div class="flex-1 relative bg-white/60 rounded-xl border border-slate-200/60 flex items-center justify-center overflow-hidden min-h-[120px] shadow-sm">
+                             <div id="previewEmptyText" class="text-slate-300 text-xs font-medium select-none pointer-events-none">等待预览...</div>
+                             <div class="preview-container w-full h-full flex items-center justify-center absolute inset-0 p-2">
+                                 <img id="previewImg" class="max-w-full max-h-full object-contain rounded shadow-sm" style="display: none;">
+                                 <canvas id="canvasOverlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                             </div>
+                        </div>
+
                     </div>
                 </div>
                 <input type="file" id="fileInput" accept="image/*,application/pdf" multiple class="hidden">
             </div>
 
-            <!-- 控制按钮组 -->
             <div class="p-6 pt-2 space-y-3 bg-white border-t border-slate-100 z-10">
                 <button id="uploadBtn" class="w-full py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    选择本地文件
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 选择本地文件
                 </button>
-
                 <div class="grid grid-cols-2 gap-3">
-                    <button id="startBtn" onclick="startProcessing()" disabled class="col-span-1 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold shadow-lg shadow-slate-200 flex items-center justify-center gap-2">
-                        <span>▶️</span> 开始深度识别
-                    </button>
-                    <button id="stopBtn" onclick="stopTask()" disabled class="col-span-1 bg-white border border-rose-100 text-rose-500 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold flex items-center justify-center">
-                        停止
-                    </button>
+                    <button id="startBtn" onclick="startProcessing()" disabled class="col-span-1 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold shadow-lg shadow-slate-200 flex items-center justify-center gap-2"><span>▶️</span> 开始深度识别</button>
+                    <button id="stopBtn" onclick="stopTask()" disabled class="col-span-1 bg-white border border-rose-100 text-rose-500 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3 rounded-lg text-sm font-bold flex items-center justify-center">停止</button>
                 </div>
-
                 <button onclick="clearAll()" class="w-full text-xs text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1 py-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                    清空重置页面内容
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg> 清空重置页面内容
                 </button>
             </div>
         </aside>
 
-        <!-- 右侧栏: 结果展示 -->
+        <!-- 右侧栏 -->
         <div class="col-span-12 lg:col-span-8 xl:col-span-9 flex flex-col gap-6 h-full min-h-0 overflow-y-auto pr-1 pb-1">
-            
-            <!-- 1. 统计卡片区 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
-                <!-- 蓝色卡片 -->
                 <div class="bg-brand-600 rounded-2xl p-5 text-white shadow-lg shadow-brand-500/20 relative overflow-hidden group">
-                    <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform duration-500">
-                        <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor"><path d="M4 7c0-1.1.9-2 2-2h2.5a.5.5 0 0 1 0 1H6a1 1 0 0 0-1 1v2.5a.5.5 0 0 1-1 0V7zm0 10v-2.5a.5.5 0 0 1 1 0V17a1 1 0 0 0 1 1h2.5a.5.5 0 0 1 0 1H6a2 2 0 0 1-2-2zm10 2.5a.5.5 0 0 1 0-1H18a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0V17a2 2 0 0 1-2 2h-4.5zM19 9.5v-2.5a1 1 0 0 0-1-1h-2.5a.5.5 0 0 1 0-1H18a2 2 0 0 1 2 2v2.5a.5.5 0 0 1-1 0z"/></svg>
-                    </div>
+                    <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform duration-500"><svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor"><path d="M4 7c0-1.1.9-2 2-2h2.5a.5.5 0 0 1 0 1H6a1 1 0 0 0-1 1v2.5a.5.5 0 0 1-1 0V7zm0 10v-2.5a.5.5 0 0 1 1 0V17a1 1 0 0 0 1 1h2.5a.5.5 0 0 1 0 1H6a2 2 0 0 1-2-2zm10 2.5a.5.5 0 0 1 0-1H18a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0V17a2 2 0 0 1-2 2h-4.5zM19 9.5v-2.5a1 1 0 0 0-1-1h-2.5a.5.5 0 0 1 0-1H18a2 2 0 0 1 2 2v2.5a.5.5 0 0 1-1 0z"/></svg></div>
                     <p class="text-brand-100 text-xs font-semibold uppercase tracking-wider mb-1">条码识别结果</p>
-                    <div class="flex items-baseline gap-2">
-                        <span id="barcodeCountBadgeDisplay" class="text-4xl font-bold tracking-tight">0</span>
-                        <span class="text-sm text-brand-200 font-medium italic">Items Detected</span>
-                    </div>
+                    <div class="flex items-baseline gap-2"><span id="barcodeCountBadgeDisplay" class="text-4xl font-bold tracking-tight">0</span><span class="text-sm text-brand-200 font-medium italic">Items Detected</span></div>
                 </div>
-
-                <!-- 白色卡片 -->
                 <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
                     <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">处理页数</p>
-                    <div class="flex items-baseline gap-2">
-                        <span id="pageCountDisplay" class="text-4xl font-bold text-slate-800 tracking-tight">0</span>
-                        <span class="text-sm text-slate-400 font-medium italic">Pages</span>
-                    </div>
-                     <!-- 隐藏的真实 Badge 引用，用于JS更新 -->
+                    <div class="flex items-baseline gap-2"><span id="pageCountDisplay" class="text-4xl font-bold text-slate-800 tracking-tight">0</span><span class="text-sm text-slate-400 font-medium italic">Pages</span></div>
                     <span id="barcodeCountBadge" class="hidden">0</span>
                 </div>
             </div>
-
-            <!-- 2. 进度条 -->
             <div id="progressSection" class="hidden bg-white border border-slate-100 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm animate-fade-in">
-                <div id="progressIconContainer" class="w-6 h-6 rounded-full flex items-center justify-center text-brand-600">
-                    <svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
-                </div>
-                <div class="flex-1 flex justify-between items-center">
-                    <span id="mainStatusText" class="text-sm font-semibold text-slate-700">准备就绪</span>
-                    <span id="subStatusText" class="text-xs text-slate-400">等待操作</span>
-                </div>
+                <div id="progressIconContainer" class="w-6 h-6 rounded-full flex items-center justify-center text-brand-600"><svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg></div>
+                <div class="flex-1 flex justify-between items-center"><span id="mainStatusText" class="text-sm font-semibold text-slate-700">准备就绪</span><span id="subStatusText" class="text-xs text-slate-400">等待操作</span></div>
                 <div id="pageBadge" class="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600 hidden">0/0</div>
             </div>
-
-            <!-- 3. 结果内容区 -->
             <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                
-                <!-- 条码明细 -->
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
-                        <h3 class="font-bold text-brand-600 text-sm flex items-center gap-2">
-                            条码明细 - 提取区
-                            <span class="text-[10px] text-brand-600 font-bold px-2 py-0.5 bg-brand-50 rounded-full border border-brand-100">
-                                共 <span id="barcodeDetailCount">0</span> 条
-                            </span>
-                        </h3>
-                        <button onclick="copyResults('resultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        </button>
+                        <h3 class="font-bold text-brand-600 text-sm flex items-center gap-2">条码明细 - 提取区 <span class="text-[10px] text-brand-600 font-bold px-2 py-0.5 bg-brand-50 rounded-full border border-brand-100">共 <span id="barcodeDetailCount">0</span> 条</span></h3>
+                        <button onclick="copyResults('resultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                     </div>
-                    <textarea id="resultArea" placeholder="识别出的条码数值..." 
-                        class="flex-1 w-full p-5 resize-none outline-none text-sm font-mono text-slate-600 leading-relaxed placeholder-slate-300 bg-transparent"></textarea>
+                    <textarea id="resultArea" placeholder="识别出的条码数值..." class="flex-1 w-full p-5 resize-none outline-none text-sm font-mono text-slate-600 leading-relaxed placeholder-slate-300 bg-transparent"></textarea>
                 </div>
-
-                <!-- AI 特征信息 -->
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
                     <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0">
-                        <h3 class="font-bold text-slate-500 text-sm flex items-center gap-2">
-                            文本提取信息 (OCR)
-                        </h3>
-                        <div class="flex items-center gap-2">
-                            <span class="text-[10px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded-full border border-slate-100">仅奇数页</span>
-                            <button onclick="copyResults('ocrResultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            </button>
-                        </div>
+                        <h3 class="font-bold text-slate-500 text-sm flex items-center gap-2">文本提取信息 (OCR)</h3>
+                        <div class="flex items-center gap-2"><span class="text-[10px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded-full border border-slate-100">仅奇数页</span><button onclick="copyResults('ocrResultArea')" class="text-slate-400 hover:text-brand-600 transition p-1" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>
                     </div>
-                    <textarea id="ocrResultArea" placeholder="AI 提取的特征文本..." 
-                        class="flex-1 w-full p-5 resize-none outline-none text-sm font-mono text-slate-600 leading-relaxed placeholder-slate-300 bg-transparent"></textarea>
+                    <textarea id="ocrResultArea" placeholder="AI 提取的特征文本..." class="flex-1 w-full p-5 resize-none outline-none text-sm font-mono text-slate-600 leading-relaxed placeholder-slate-300 bg-transparent"></textarea>
                 </div>
             </div>
         </div>
@@ -253,7 +286,7 @@
     <canvas id="canvasHidden"></canvas>
 
     <!-- 消息框 -->
-    <div id="messageBox" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-50 animate-fade-in">
+    <div id="messageBox" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-[200] animate-fade-in">
         <div class="bg-white p-6 rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full transform transition-all scale-100">
             <h3 id="messageTitle" class="text-lg font-bold mb-2 text-slate-800 flex items-center gap-2">提示</h3>
             <p id="messageContent" class="text-slate-500 mb-6 text-sm leading-relaxed"></p>
@@ -261,42 +294,68 @@
         </div>
     </div>
 
-    <!-- API 设置 模态框 -->
-    <div id="settingsModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-50 animate-fade-in">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full transform transition-all scale-100">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    ⚙️ API 配置
-                </h3>
-                <button onclick="toggleSettings()" class="text-slate-400 hover:text-slate-600">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
-                </button>
+    <!-- 管理员面板 -->
+    <div id="adminModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] hidden items-center justify-center z-[150] animate-fade-in">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl border border-slate-100 max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-6 shrink-0">
+                <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">🛡️ 系统管理控制台</h3>
+                <button onclick="toggleAdminPanel()" class="text-slate-400 hover:text-slate-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
             </div>
-            
-            <div class="mb-6">
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Qwen API Key (DashScope)</label>
-                <div class="relative">
-                    <input type="password" id="apiKeyInput" placeholder="sk-..." 
-                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all text-slate-700 pr-10">
-                    <button onclick="clearApiKey()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition p-1" title="清空 Key">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                    </button>
+            <div class="overflow-y-auto pr-2 space-y-6">
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <h4 class="text-sm font-bold text-slate-700 mb-3">全局 API Key 配置</h4>
+                    <div class="relative">
+                        <input type="password" id="globalApiKeyInput" placeholder="sk-..." class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm pr-10">
+                        <button id="adminEyeBtn" onclick="toggleAdminKeyVisibility()" class="absolute right-20 top-0 bottom-0 px-2 text-slate-400 hover:text-slate-600 flex items-center" title="显示/隐藏 Key">
+                            <svg id="adminEyeIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                        <button onclick="saveGlobalApiKey()" class="absolute right-1 top-1 bottom-1 bg-brand-600 text-white px-3 rounded text-xs font-bold hover:bg-brand-700">保存更新</button>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2">此 Key 将自动分发给所有员工账号，员工无需手动输入。</p>
                 </div>
-                <p class="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Key 仅保存在本地浏览器中，用于调用阿里云通义千问视觉模型。
-                </p>
-            </div>
-            <div class="flex gap-3 justify-end">
-                <button onclick="toggleSettings()" class="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-50 transition">取消</button>
-                <button onclick="saveSettings()" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium shadow-lg shadow-brand-500/20 transition">保存配置</button>
+                <div>
+                    <h4 class="text-sm font-bold text-slate-700 mb-3 flex justify-between items-center">用户列表 <span class="text-xs font-normal text-slate-400" id="userCount">loading...</span></h4>
+                    <div class="grid grid-cols-12 gap-2 mb-4">
+                        <input type="text" id="newUserName" placeholder="新账号" class="col-span-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <input type="text" id="newUserPass" placeholder="密码" class="col-span-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <input type="text" id="newUserRemark" placeholder="备注(如:张三)" class="col-span-4 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <button onclick="addUser()" class="col-span-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 flex items-center justify-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> 添加</button>
+                    </div>
+                    <div class="border border-slate-200 rounded-xl overflow-hidden">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-semibold"><tr><th class="px-4 py-3">账号</th><th class="px-4 py-3">备注</th><th class="px-4 py-3">角色</th><th class="px-4 py-3 text-right">操作</th></tr></thead>
+                            <tbody id="userListBody" class="divide-y divide-slate-100 bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
 <script>
-    // --- 1. 全局变量与 UI 引用 ---
+    // ==========================================
+    // 1. Supabase 配置 (已预填)
+    // ==========================================
+    const YOUR_SUPABASE_URL = 'https://qzvnxshmanuiqeljxywm.supabase.co';
+    const YOUR_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dm54c2htYW51aXFlbGp4eXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwNzYzNDIsImV4cCI6MjA4MTY1MjM0Mn0.wpVInI3YQrgo51BraYYdvcEkQWZk-TR3D3VD6QKxa2s';
+    
+    const { createClient } = supabase;
+    const db = createClient(YOUR_SUPABASE_URL, YOUR_SUPABASE_KEY);
+
+    // ==========================================
+    // 2. 全局变量与 UI 引用 (统一声明区)
+    // ==========================================
+    // 状态变量
+    let currentUser = null;
+    let QWEN_API_KEY = "";
+    let isApiKeyEnabled = false; 
+    const SESSION_KEY = "sxz_session_v1";
+    let fileQueue = [];
+    let shouldStop = false; 
+
+    // UI 元素引用 (确保这里定义了，下面才能用)
     const fileInput = document.getElementById('fileInput');
-    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadBtn = document.getElementById('uploadBtn'); 
     const startBtn = document.getElementById('startBtn'); 
     const stopBtn = document.getElementById('stopBtn');
     const previewImg = document.getElementById('previewImg');
@@ -305,737 +364,540 @@
     const dropArea = document.getElementById('dropArea');
     const placeholder = document.getElementById('placeholder');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
-    const barcodeCountBadge = document.getElementById('barcodeCountBadge'); // 逻辑引用
-    const barcodeCountBadgeDisplay = document.getElementById('barcodeCountBadgeDisplay'); // 视觉引用
-    const pageCountDisplay = document.getElementById('pageCountDisplay'); // 页面计数视觉引用
+    const previewEmptyText = document.getElementById('previewEmptyText');
     
-    // 进度条相关引用
+    // 进度条与状态显示引用
     const progressSection = document.getElementById('progressSection');
     const progressIconContainer = document.getElementById('progressIconContainer');
     const mainStatusText = document.getElementById('mainStatusText');
     const subStatusText = document.getElementById('subStatusText');
     const pageBadge = document.getElementById('pageBadge');
     
+    // Canvas & 弹窗引用
     const canvasHidden = document.getElementById('canvasHidden');
     const ctxHidden = canvasHidden.getContext('2d', { willReadFrequently: true });
-    const canvasOverlay = document.getElementById('canvasOverlay');
-    const ctxOverlay = canvasOverlay.getContext('2d');
-
     const messageBox = document.getElementById('messageBox');
     const messageTitle = document.getElementById('messageTitle');
     const messageContent = document.getElementById('messageContent');
+
+    // ==========================================
+    // 3. 初始化逻辑 (入口)
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', async () => {
+        initEyeIconEvents();
+        bindEventListeners(); 
+
+        const savedSession = localStorage.getItem(SESSION_KEY);
+        if (savedSession) {
+            try {
+                const user = JSON.parse(savedSession);
+                await restoreSession(user);
+            } catch (e) {
+                console.warn("Session restore failed:", e);
+                localStorage.removeItem(SESSION_KEY);
+            }
+        }
+        updateApiStatusUI();
+    });
+
+    // ==========================================
+    // 4. 事件绑定逻辑 (集中管理)
+    // ==========================================
+    function bindEventListeners() {
+        if(uploadBtn) uploadBtn.addEventListener('click', () => fileInput.click());
+        
+        if(fileInput) {
+            fileInput.addEventListener('change', e => { 
+                if(e.target.files && e.target.files.length > 0) handleFilesSelect(e.target.files); 
+                fileInput.value = ''; 
+            });
+        }
+
+        document.addEventListener('paste', e => {
+            const items = e.clipboardData.items; 
+            const files = [];
+            for (let item of items) { 
+                if (item.type.indexOf('image') !== -1) { files.push(item.getAsFile()); } 
+            }
+            if (files.length > 0) { handleFilesSelect(files); e.preventDefault(); }
+        });
+
+        if(dropArea) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, e => { 
+                    e.preventDefault(); 
+                    e.stopPropagation(); 
+                    if (eventName === 'dragenter' || eventName === 'dragover') {
+                        dropArea.classList.add('border-brand-400', 'bg-brand-50');
+                    } else {
+                        dropArea.classList.remove('border-brand-400', 'bg-brand-50');
+                    }
+                }, false);
+            });
+            
+            dropArea.addEventListener('drop', e => { 
+                const dt = e.dataTransfer; 
+                const files = dt.files; 
+                if (files.length > 0) handleFilesSelect(files); 
+            }, false);
+        }
+    }
+
+    // ==========================================
+    // 5. 用户与权限逻辑
+    // ==========================================
+    async function handleLogin() {
+        const username = document.getElementById('loginUser').value.trim();
+        const password = document.getElementById('loginPass').value.trim();
+        const msg = document.getElementById('loginMsg');
+        const btn = document.getElementById('loginBtn');
+
+        if(!username || !password) { msg.innerText = "请输入账号和密码"; return; }
+
+        btn.disabled = true; btn.innerText = "验证中..."; msg.innerText = "";
+
+        try {
+            const { data, error } = await db.from('app_users').select('*').eq('username', username).eq('password', password).single();
+            
+            if (error || !data) throw new Error("账号或密码错误");
+            if (data.is_active === false) throw new Error("该账号已被停用，请联系管理员");
+
+            localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+            await restoreSession(data);
+        } catch (err) {
+            msg.innerText = err.message;
+            btn.disabled = false;
+            btn.innerText = "登录系统";
+        }
+    }
+
+    async function restoreSession(user) {
+        currentUser = user;
+        const isAdmin = (user.role === 'SXZadmin');
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('currentUserDisplay').innerText = user.remark || user.username;
+        document.getElementById('currentRoleDisplay').innerText = isAdmin ? "ADMINISTRATOR" : "STAFF";
+        if(isAdmin) {
+            document.getElementById('adminBtn').classList.remove('hidden');
+            setTimeout(loadUserList, 100); 
+        }
+        await fetchGlobalApiKey();
+    }
+
+    function handleLogout() {
+        currentUser = null;
+        QWEN_API_KEY = "";
+        isApiKeyEnabled = false;
+        localStorage.removeItem(SESSION_KEY);
+        location.reload(); 
+    }
+
+    // ==========================================
+    // 6. 核心业务逻辑 (文件处理、识别)
+    // ==========================================
+
+    function handleFilesSelect(files) {
+        if (!files || files.length === 0) return;
+        const validFiles = Array.from(files).filter(file => file.type === 'application/pdf' || file.type.startsWith('image/'));
+        if (validFiles.length === 0) { showMessageBox("格式错误", "不支持的格式", "error"); return; }
+
+        fileQueue = validFiles;
+        shouldStop = false;
+        
+        // UI 更新
+        document.getElementById('fileNameDisplay').classList.remove('hidden');
+        const placeholder = document.getElementById('placeholder');
+        const previewImg = document.getElementById('previewImg');
+        const emptyText = document.getElementById('previewEmptyText');
+
+        if (validFiles.length > 1) { 
+            document.getElementById('fileNameDisplay').innerText = `已就绪 ${validFiles.length} 个文件`; 
+            // 批量文件显示卡片
+            placeholder.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center w-40 animate-fade-in"><div class="text-4xl mb-2">📚</div><div class="text-xs font-bold text-slate-700">批量任务</div><div class="text-[10px] text-slate-400">共 ${validFiles.length} 个文件</div></div>`;
+            // 重置预览区
+            previewImg.style.display = 'none';
+            if(emptyText) emptyText.style.display = 'block';
+        } else { 
+            const file = validFiles[0]; 
+            document.getElementById('fileNameDisplay').innerText = file.name; 
+            
+            if (file.type === 'application/pdf') { 
+                // PDF：上方显示PDF图标卡片，下方显示“等待预览”
+                placeholder.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center w-32 animate-fade-in"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-slate-700 mb-2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><div class="text-xs font-bold text-slate-700">PDF 文档</div><div class="text-[10px] text-slate-400 truncate w-full text-center mt-0.5" title="${file.name}">${file.name}</div></div>`;
+                
+                previewImg.style.display = 'none';
+                if(emptyText) emptyText.style.display = 'block';
+            } else { 
+                // 图片：上方显示图片图标，下方直接显示图片
+                placeholder.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center w-32 animate-fade-in"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-brand-600 mb-2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div class="text-xs font-bold text-slate-700">图片文件</div><div class="text-[10px] text-slate-400 truncate w-full text-center mt-0.5">${file.name}</div></div>`;
+                
+                const reader = new FileReader(); 
+                reader.onload = e => { 
+                    previewImg.src = e.target.result; 
+                    previewImg.style.display = 'block'; 
+                    if(emptyText) emptyText.style.display = 'none';
+                }; 
+                reader.readAsDataURL(file); 
+            } 
+        }
+
+        // 按钮唤醒
+        resultArea.value = ''; ocrResultArea.value = ''; updateBarcodeCount(); document.getElementById('pageCountDisplay').innerText = "0"; 
+        const canvasOverlay = document.getElementById('canvasOverlay');
+        const ctxOverlay = canvasOverlay.getContext('2d');
+        ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+        
+        updateProgress("文件就绪", `等待处理 ${validFiles.length} 个文件`, null, 'idle');
+        startBtn.disabled = false; stopBtn.disabled = true; startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+
+    async function startProcessing() {
+        if (!fileQueue || fileQueue.length === 0) return;
+        
+        if (isApiKeyEnabled && !QWEN_API_KEY) {
+            alert("系统尚未配置 API Key，请联系管理员。");
+            return;
+        }
+
+        startBtn.disabled = true; stopBtn.disabled = false; startBtn.innerHTML = "⏳ 处理中..."; startBtn.classList.add('opacity-70', 'cursor-wait'); shouldStop = false;
+        resultArea.value = ''; ocrResultArea.value = ''; updateBarcodeCount(); 
+        
+        for (let i = 0; i < fileQueue.length; i++) {
+            if (shouldStop) break;
+            const currentFile = fileQueue[i]; 
+            document.getElementById('fileNameDisplay').innerText = `正在处理 (${i+1}/${fileQueue.length}): ${currentFile.name}`; 
+            updateProgress(`正在处理文件 ${i+1}/${fileQueue.length}`, currentFile.name, null, 'loading'); 
+            appendFileHeader(currentFile.name);
+            
+            try {
+                if (currentFile.type === 'application/pdf') await processPdfFile(currentFile);
+                else await new Promise((resolve, reject) => { 
+                    const reader = new FileReader(); 
+                    reader.onload = async (e) => { 
+                        try { await Promise.race([ processImage(e.target.result), new Promise(r => setTimeout(r, 20000)) ]); resolve(); } 
+                        catch (err) { reject(err); } 
+                    }; 
+                    reader.onerror = reject; 
+                    reader.readAsDataURL(currentFile); 
+                });
+            } catch (err) { console.error(`Error processing file ${currentFile.name}:`, err); }
+        }
+        
+        if (shouldStop) updateProgress("已停止", "用户终止操作", null, 'stopped'); 
+        else { 
+            updateProgress("全部完成", `已处理 ${fileQueue.length} 个文件`, null, 'success'); 
+            document.getElementById('fileNameDisplay').innerText = `处理完成: 共 ${fileQueue.length} 个文件`; 
+        }
+        
+        startBtn.disabled = false; stopBtn.disabled = true; startBtn.innerHTML = "<span>▶️</span> 开始深度识别"; startBtn.classList.remove('opacity-70', 'cursor-wait'); shouldStop = false;
+    }
+
+    // ==========================================
+    // 7. 管理员与系统逻辑
+    // ==========================================
+
+    async function loadUserList() {
+        const tbody = document.getElementById('userListBody');
+        const countSpan = document.getElementById('userCount');
+        if(!tbody) return; 
+        tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">加载中...</td></tr>';
+        
+        const { data, error } = await db.from('app_users').select('*').order('username', { ascending: true });
+        
+        if (error) { 
+            tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-rose-500">加载失败: ${error.message}</td></tr>`; 
+            return; 
+        }
+        countSpan.innerText = `共 ${data.length} 人`;
+        tbody.innerHTML = '';
+        data.forEach(user => {
+            const isUserAdmin = (user.role === 'SXZadmin');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-700">${user.username}</td><td class="px-4 py-3 text-slate-500">${user.remark || '-'}</td><td class="px-4 py-3 text-xs"><span class="${isUserAdmin ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'} px-2 py-0.5 rounded-full font-bold">${isUserAdmin ? '管理员' : '员工'}</span></td><td class="px-4 py-3 text-right">${!isUserAdmin ? `<button onclick="deleteUser('${user.username}')" class="text-rose-500 hover:text-rose-700 text-xs font-bold px-2 py-1 rounded hover:bg-rose-50 transition">删除</button>` : '<span class="text-slate-300 text-xs">系统</span>'}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function deleteUser(username) {
+        if (confirm(`确定要删除账号 [${username}] 吗？`)) {
+            const { error } = await db.from('app_users').delete().eq('username', username);
+            if (error) alert("删除失败: " + error.message);
+            else loadUserList();
+        }
+    }
+
+    async function addUser() {
+        const u = document.getElementById('newUserName').value.trim();
+        const p = document.getElementById('newUserPass').value.trim();
+        const r = document.getElementById('newUserRemark').value.trim();
+        if (!u || !p) { alert("账号和密码必填"); return; }
+        const { error } = await db.from('app_users').insert({ username: u, password: p, remark: r, role: 'staff', is_active: true });
+        if (error) alert("添加失败: " + error.message);
+        else { document.getElementById('newUserName').value = ''; document.getElementById('newUserPass').value = ''; document.getElementById('newUserRemark').value = ''; loadUserList(); }
+    }
+
+    async function saveGlobalApiKey() {
+        const newKey = document.getElementById('globalApiKeyInput').value.trim();
+        const { error } = await db.from('app_config').upsert({ key_name: 'qwen_api_key', key_value: newKey }, { onConflict: 'key_name' });
+        if (error) alert("保存失败: " + error.message);
+        else { QWEN_API_KEY = newKey; alert("API Key 已更新，即刻生效。"); }
+    }
+
+    async function fetchGlobalApiKey() {
+        try {
+            const { data, error } = await db.from('app_config').select('key_value').eq('key_name', 'qwen_api_key').single();
+            if (data && data.key_value) {
+                QWEN_API_KEY = data.key_value;
+                if(currentUser && currentUser.role === 'SXZadmin') {
+                    document.getElementById('globalApiKeyInput').value = data.key_value;
+                }
+            }
+        } catch (e) { console.warn("No API Key config found."); }
+    }
+
+    // ==========================================
+    // 8. 辅助函数 (UI & 工具)
+    // ==========================================
     
-    const settingsModal = document.getElementById('settingsModal');
-    const apiKeyInput = document.getElementById('apiKeyInput');
+    function toggleApiKeyUsage() {
+        const toggle = document.getElementById('apiKeyToggle');
+        isApiKeyEnabled = toggle.checked;
+        updateApiStatusUI();
+    }
 
-    let fileQueue = [];
-    let shouldStop = false; 
-
-    // --- 2. API 配置与工具函数 ---
-    
-    let QWEN_API_KEY = localStorage.getItem('QWEN_API_KEY') || "";
-
-    function updateApiStatus() {
+    function updateApiStatusUI() {
         const indicator = document.getElementById('apiStatusIndicator');
         const dot = document.getElementById('apiStatusDot');
         const text = document.getElementById('apiStatusText');
-        
-        if (QWEN_API_KEY && QWEN_API_KEY.trim() !== "") {
-            indicator.className = "flex items-center gap-2 px-4 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold tracking-wide cursor-pointer transition-colors border border-emerald-100 hover:bg-emerald-100";
+        const toggle = document.getElementById('apiKeyToggle');
+        toggle.checked = isApiKeyEnabled;
+        if (isApiKeyEnabled) {
+            indicator.className = "flex items-center gap-2 px-4 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold tracking-wide transition-colors border border-emerald-100";
             dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-            text.innerText = "API READY";
+            text.innerText = "AI ON";
         } else {
-            indicator.className = "flex items-center gap-2 px-4 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold tracking-wide cursor-pointer transition-colors border border-transparent hover:bg-slate-200";
+            indicator.className = "flex items-center gap-2 px-4 py-1.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold tracking-wide transition-colors border border-transparent";
             dot.className = "w-2 h-2 rounded-full bg-slate-400";
-            text.innerText = "NO API KEY";
+            text.innerText = "OFF";
         }
     }
 
-    updateApiStatus();
+    function toggleAdminPanel() {
+        const modal = document.getElementById('adminModal');
+        if (modal.classList.contains('hidden')) { modal.classList.remove('hidden'); modal.classList.add('flex'); loadUserList(); } 
+        else { modal.classList.remove('flex'); modal.classList.add('hidden'); }
+    }
 
-    function toggleSettings() {
-        if (settingsModal.classList.contains('hidden')) {
-            apiKeyInput.value = QWEN_API_KEY;
-            settingsModal.classList.remove('hidden');
-            settingsModal.classList.add('flex');
-        } else {
-            settingsModal.classList.remove('flex');
-            settingsModal.classList.add('hidden');
+    function toggleAdminKeyVisibility() {
+        const input = document.getElementById('globalApiKeyInput');
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function initEyeIconEvents() {
+        const eyeBtn = document.getElementById('eyeBtn');
+        const passInput = document.getElementById('loginPass');
+        const showPass = () => passInput.type = 'text';
+        const hidePass = () => passInput.type = 'password';
+        if(eyeBtn) {
+            eyeBtn.addEventListener('mousedown', showPass);
+            eyeBtn.addEventListener('mouseup', hidePass);
+            eyeBtn.addEventListener('mouseleave', hidePass);
+            eyeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); showPass(); });
+            eyeBtn.addEventListener('touchend', hidePass);
         }
     }
 
-    function clearApiKey() {
-        apiKeyInput.value = "";
-        apiKeyInput.focus();
-    }
-
-    function saveSettings() {
-        const key = apiKeyInput.value.trim();
-        if (!key) {
-            QWEN_API_KEY = "";
-            localStorage.removeItem('QWEN_API_KEY');
-            toggleSettings();
-            updateApiStatus();
-            showMessageBox("配置已更新", "API Key 已清空", "success");
-            return;
-        }
-        QWEN_API_KEY = key;
-        localStorage.setItem('QWEN_API_KEY', key);
-        toggleSettings();
-        updateApiStatus(); 
-        showMessageBox("设置成功", "API Key 已保存", "success");
-    }
+    function handleEnter(e) { if(e.key === "Enter") handleLogin(); }
 
     function showMessageBox(title, content, type = 'error') {
-        messageTitle.innerText = title;
-        messageContent.innerText = content;
-        if(type === 'error') {
-            messageTitle.className = "text-lg font-bold mb-2 text-rose-600 flex items-center gap-2";
-        } else {
-            messageTitle.className = "text-lg font-bold mb-2 text-brand-600 flex items-center gap-2";
-        }
-        messageBox.classList.remove('hidden');
-        messageBox.classList.add('flex');
+        messageTitle.innerText = title; messageContent.innerText = content;
+        if(type === 'error') messageTitle.className = "text-lg font-bold mb-2 text-rose-600 flex items-center gap-2";
+        else messageTitle.className = "text-lg font-bold mb-2 text-brand-600 flex items-center gap-2";
+        messageBox.classList.remove('hidden'); messageBox.classList.add('flex');
     }
-
-    function closeMessageBox() {
-        messageBox.classList.remove('flex');
-        messageBox.classList.add('hidden');
-    }
+    function closeMessageBox() { messageBox.classList.remove('flex'); messageBox.classList.add('hidden'); }
 
     function updateBarcodeCount() {
-        const val = resultArea.value;
-        const lines = val.split('\n');
+        const val = resultArea.value; const lines = val.split('\n');
         const count = lines.filter(line => line.trim() !== '' && !line.trim().startsWith('【')).length;
-        
-        barcodeCountBadge.innerText = count;
-        barcodeCountBadgeDisplay.innerText = count; 
-        
+        document.getElementById('barcodeCountBadge').innerText = count; 
+        document.getElementById('barcodeCountBadgeDisplay').innerText = count; 
         const detailCountSpan = document.getElementById('barcodeDetailCount');
-        if (detailCountSpan) {
-            detailCountSpan.innerText = count;
-        }
+        if (detailCountSpan) detailCountSpan.innerText = count;
     }
 
     function updateProgress(mainText, subText = "", pageInfo = null, statusType = 'loading') {
         progressSection.classList.remove('hidden');
         mainStatusText.innerText = mainText;
         if (subText) subStatusText.innerText = subText;
-        
         if (pageInfo) {
             pageBadge.classList.remove('hidden');
             pageBadge.innerText = `${pageInfo.current} / ${pageInfo.total}`;
-            if (pageInfo.total > 0) {
-            }
         } else {
             pageBadge.classList.add('hidden');
         }
-
         progressIconContainer.className = "w-6 h-6 rounded-full flex items-center justify-center"; 
-        
         let svgContent = '';
-        
         switch(statusType) {
-            case 'loading':
-                progressIconContainer.classList.add('text-brand-600');
-                svgContent = `<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>`;
-                break;
-            case 'success':
-                progressIconContainer.classList.add('text-emerald-500');
-                svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-                break;
-            case 'stopped':
-            case 'error':
-                progressIconContainer.classList.add('text-rose-500');
-                svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>`;
-                break;
-            case 'idle':
-            default:
-                progressIconContainer.classList.add('text-slate-400');
-                svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
-                break;
+            case 'loading': progressIconContainer.classList.add('text-brand-600'); svgContent = `<svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>`; break;
+            case 'success': progressIconContainer.classList.add('text-emerald-500'); svgContent = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`; break;
+            case 'stopped': case 'error': progressIconContainer.classList.add('text-rose-500'); svgContent = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>`; break;
+            default: progressIconContainer.classList.add('text-slate-400'); svgContent = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`; break;
         }
-        
         progressIconContainer.innerHTML = svgContent;
     }
 
-    // --- 3. 核心 API 调用逻辑 (Qwen-MAX) ---
+    function appendFileHeader(filename) {
+        if (resultArea.value.length > 0 && !resultArea.value.endsWith('\n')) { resultArea.value += '\n'; } resultArea.value += `【${filename}】\n`; resultArea.scrollTop = resultArea.scrollHeight;
+        if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) { ocrResultArea.value += '\n'; } ocrResultArea.value += `【${filename}】\n`; ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
+    }
+
+    function clearAll() { 
+        fileQueue = []; resultArea.value = ''; ocrResultArea.value = ''; updateBarcodeCount(); document.getElementById('pageCountDisplay').innerText = "0"; 
+        const previewImg = document.getElementById('previewImg');
+        const placeholder = document.getElementById('placeholder');
+        const emptyText = document.getElementById('previewEmptyText');
+        
+        previewImg.src = ''; previewImg.style.display = 'none'; 
+        if(emptyText) emptyText.style.display = 'block';
+        
+        // 重置为初始拖拽提示
+        placeholder.innerHTML = `<div class="text-center pointer-events-none p-2"><div class="mb-3 text-4xl opacity-30 mx-auto w-16 h-16 flex items-center justify-center bg-white rounded-full shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></div><p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p><p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG</p></div>`; 
+        
+        document.getElementById('fileNameDisplay').classList.add('hidden'); 
+        const canvasOverlay = document.getElementById('canvasOverlay');
+        const ctxOverlay = canvasOverlay.getContext('2d');
+        ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height); 
+        progressSection.classList.add('hidden'); 
+        startBtn.disabled = true; stopBtn.disabled = true; startBtn.classList.add('opacity-50', 'cursor-not-allowed'); 
+    }
+    
+    function copyResults(areaId) { const textarea = document.getElementById(areaId); if (textarea && textarea.value) { textarea.select(); document.execCommand('copy'); showMessageBox("复制成功", "已复制到剪贴板", "success"); } else { showMessageBox("提示", "没有可复制的内容", "primary"); } }
 
     async function fetchWithRetry(url, options, retries = 1) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); 
-
+        const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 20000); 
         const config = { ...options, signal: controller.signal };
-
         try {
-            const response = await fetch(url, config);
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                if (response.status === 429 || response.status >= 500) {
-                    throw new Error(`HTTP Error ${response.status}`);
-                }
-                const errData = await response.json();
-                throw new Error(errData.message || `请求失败 (${response.status})`);
-            }
+            const response = await fetch(url, config); clearTimeout(timeoutId);
+            if (!response.ok) { const errData = await response.json(); throw new Error(errData.message || `请求失败 (${response.status})`); }
             return response;
-        } catch (err) {
-            clearTimeout(timeoutId);
-            if (err.name === 'AbortError') throw new Error("API 请求超时");
-            if (retries > 0) {
-                await new Promise(r => setTimeout(r, 1000)); 
-                return fetchWithRetry(url, options, retries - 1);
-            }
-            throw err;
-        }
+        } catch (err) { clearTimeout(timeoutId); if (retries > 0) { await new Promise(r => setTimeout(r, 1000)); return fetchWithRetry(url, options, retries - 1); } throw err; }
     }
 
     async function runOCR(base64Image) {
-        if (!QWEN_API_KEY) throw new Error("未配置 API Key");
-
+        if (!QWEN_API_KEY) throw new Error("API Key 未获取");
         const apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
         const sysPrompt = "请识别图片文字。要求：1.严格按从上到下、从左到右的视觉顺序。2.不需要识别且输出带有“前后尺码不同，请不要贴错”和图片左边的文字内容。3.而且只要识别图片右下方文字内容。直接输出内容，无描述。";
-
-        const payload = {
-            model: "qwen-vl-max", 
-            messages: [
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: sysPrompt },
-                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                    ]
-                }
-            ],
-            max_tokens: 2000
-        };
-
+        const payload = { model: "qwen-vl-max", messages: [{ role: "user", content: [{ type: "text", text: sysPrompt }, { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }] }], max_tokens: 2000 };
         try {
-            const response = await fetchWithRetry(apiUrl, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${QWEN_API_KEY}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
+            const response = await fetchWithRetry(apiUrl, { method: "POST", headers: { "Authorization": `Bearer ${QWEN_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
             const data = await response.json();
-            if (data.choices && data.choices.length > 0) {
-                return data.choices[0].message.content.trim();
-            }
+            if (data.choices && data.choices.length > 0) return data.choices[0].message.content.trim();
             return "";
-        } catch (error) {
-            console.error("OCR API Error:", error);
-            throw error; 
-        }
+        } catch (error) { console.error("OCR API Error:", error); throw error; }
     }
-
-    // --- 4. 图像处理与业务逻辑 ---
 
     function enhanceImage(imageData) {
         const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-            data[i] = data[i + 1] = data[i + 2] = gray;
-        }
+        for (let i = 0; i < data.length; i += 4) { const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; data[i] = data[i + 1] = data[i + 2] = gray; }
         return imageData;
     }
 
     function drawBoundingBox(results) {
+        const canvasOverlay = document.getElementById('canvasOverlay');
+        const ctxOverlay = canvasOverlay.getContext('2d');
         ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-        const validResults = results.filter(r => r && r.box);
-        if (validResults.length === 0) return;
+        const validResults = results.filter(r => r && r.box); if (validResults.length === 0) return;
         const uniqueCodes = new Set();
-        
         validResults.forEach((result, index) => {
-            const code = result.codeResult.code;
-            if (uniqueCodes.has(code)) return;
-            uniqueCodes.add(code);
-            const box = result.box;
-            if (!box || box.length < 4) return;
-            ctxOverlay.strokeStyle = index === 0 ? '#10b981' : '#f59e0b'; 
-            ctxOverlay.lineWidth = 3;
-            const x = Math.floor(box[0]);
-            const y = Math.floor(box[1]);
-            const w = Math.floor(box[2] - box[0]);
-            const h = Math.floor(box[3] - box[1]);
+            const code = result.codeResult.code; if (uniqueCodes.has(code)) return; uniqueCodes.add(code);
+            const box = result.box; if (!box || box.length < 4) return;
+            ctxOverlay.strokeStyle = index === 0 ? '#10b981' : '#f59e0b'; ctxOverlay.lineWidth = 3;
+            const x = Math.floor(box[0]); const y = Math.floor(box[1]); const w = Math.floor(box[2] - box[0]); const h = Math.floor(box[3] - box[1]);
             if (w > 0 && h > 0) ctxOverlay.strokeRect(x, y, w, h);
         });
     }
 
-    // --- 核心处理函数 (单页处理) ---
     async function processImage(src, pdfInfo = null) {
         if (shouldStop) return; 
-
-        // UI Update
-        previewImg.src = src;
-        previewImg.style.display = 'block';
+        const previewImg = document.getElementById('previewImg');
+        const emptyText = document.getElementById('previewEmptyText');
         
-        if (pdfInfo) {
-            updateProgress(`正在处理第 ${pdfInfo.index} 页`, "解析图像数据与识别条码...", { current: pdfInfo.index, total: pdfInfo.total }, 'loading');
-        } else {
-            updateProgress("正在识别", "图像分析中...", null, 'loading');
-        }
+        previewImg.src = src; 
+        previewImg.style.display = 'block'; 
+        if(emptyText) emptyText.style.display = 'none';
 
-        ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+        if (pdfInfo) updateProgress(`正在处理第 ${pdfInfo.index} 页`, "解析图像数据...", { current: pdfInfo.index, total: pdfInfo.total }, 'loading');
+        else updateProgress("正在识别", "图像分析中...", null, 'loading');
         
-        await new Promise((resolve, reject) => {
-            if (previewImg.complete) resolve();
-            else {
-                previewImg.onload = resolve;
-                previewImg.onerror = () => reject(new Error("Image Load Failed"));
-            }
-        });
-
+        await new Promise((resolve, reject) => { if (previewImg.complete) resolve(); else { previewImg.onload = resolve; previewImg.onerror = () => reject(new Error("Image Load Failed")); } });
         if (shouldStop) return; 
-
-        const imgObj = previewImg;
-        const MAX_WIDTH = 1600; 
-        let width = imgObj.naturalWidth;
-        let height = imgObj.naturalHeight;
-        
-        if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-        }
-        width = Math.floor(width);
-        height = Math.floor(height);
-        
+        const imgObj = previewImg; const MAX_WIDTH = 1600; let width = imgObj.naturalWidth; let height = imgObj.naturalHeight;
+        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } width = Math.floor(width); height = Math.floor(height);
         if (width === 0 || height === 0) return;
-
-        canvasHidden.width = canvasOverlay.width = width;
-        canvasHidden.height = canvasOverlay.height = height;
         
-        ctxHidden.fillStyle = "white";
-        ctxHidden.fillRect(0, 0, width, height);
-        ctxHidden.drawImage(imgObj, 0, 0, width, height);
+        const canvasHidden = document.getElementById('canvasHidden');
+        const ctxHidden = canvasHidden.getContext('2d', { willReadFrequently: true });
+        const canvasOverlay = document.getElementById('canvasOverlay');
+        canvasHidden.width = canvasOverlay.width = width; canvasHidden.height = canvasOverlay.height = height;
+        ctxHidden.fillStyle = "white"; ctxHidden.fillRect(0, 0, width, height); ctxHidden.drawImage(imgObj, 0, 0, width, height);
+        let fullImageData = ctxHidden.getImageData(0, 0, width, height); fullImageData = enhanceImage(fullImageData); ctxHidden.putImageData(fullImageData, 0, 0);
         
-        let fullImageData = ctxHidden.getImageData(0, 0, width, height);
-        fullImageData = enhanceImage(fullImageData);
-        ctxHidden.putImageData(fullImageData, 0, 0);
-
-        // 1. 条码识别
-        const SEGMENT_HEIGHT = 400; 
-        const step = 250; 
-        
-        let allResults = [];
-        const uniqueCodesSet = new Set(); 
-        
-        const decoderConfig = {
-            numOfWorkers: 0,
-            inputStream: { size: width },
-            decoder: {
-                readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "i2of5_reader", "upc_reader"],
-                multiple: true
-            },
-            locate: true, 
-            patchSize: "medium", 
-            halfSample: false 
-        };
-
+        const SEGMENT_HEIGHT = 400; const step = 250; let allResults = []; const uniqueCodesSet = new Set(); 
+        const decoderConfig = { numOfWorkers: 0, inputStream: { size: width }, decoder: { readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "i2of5_reader", "upc_reader"], multiple: true }, locate: true, patchSize: "medium", halfSample: false };
         for (let startY = 0; startY < height; startY += step) {
-            if (shouldStop) break; 
-
-            const segmentH = Math.min(SEGMENT_HEIGHT, height - startY);
-            if (segmentH <= 0) break;
-
-            const segmentCanvas = document.createElement('canvas');
-            segmentCanvas.width = width;
-            segmentCanvas.height = segmentH;
-            const segmentCtx = segmentCanvas.getContext('2d');
-            const segmentImageData = ctxHidden.getImageData(0, startY, width, segmentH);
-            segmentCtx.putImageData(segmentImageData, 0, 0);
-
-            decoderConfig.src = segmentCanvas.toDataURL('image/jpeg', 0.85);
-            
-            await new Promise(resolve => {
-                const qTimer = setTimeout(resolve, 3000); 
-                try {
-                    Quagga.decodeSingle(decoderConfig, function(results) {
-                        clearTimeout(qTimer);
-                        if (results && results.length > 0) {
-                            results.forEach(r => {
-                                if(r.codeResult) {
-                                    const code = r.codeResult.code;
-                                    if (!uniqueCodesSet.has(code)) {
-                                        uniqueCodesSet.add(code);
-                                        if (r.box) {
-                                            r.box[1] = (r.box[1] || 0) + startY;
-                                            r.box[3] = (r.box[3] || 0) + startY;
-                                        }
-                                        allResults.push(r);
-                                    }
-                                }
-                            });
-                        }
-                        resolve();
-                    });
-                } catch (e) { clearTimeout(qTimer); resolve(); }
-            });
-            
+            if (shouldStop) break; const segmentH = Math.min(SEGMENT_HEIGHT, height - startY); if (segmentH <= 0) break;
+            const segmentCanvas = document.createElement('canvas'); segmentCanvas.width = width; segmentCanvas.height = segmentH;
+            const segmentCtx = segmentCanvas.getContext('2d'); const segmentImageData = ctxHidden.getImageData(0, startY, width, segmentH);
+            segmentCtx.putImageData(segmentImageData, 0, 0); decoderConfig.src = segmentCanvas.toDataURL('image/jpeg', 0.85);
+            await new Promise(resolve => { const qTimer = setTimeout(resolve, 3000); try { Quagga.decodeSingle(decoderConfig, function(results) { clearTimeout(qTimer); if (results && results.length > 0) { results.forEach(r => { if(r.codeResult) { const code = r.codeResult.code; if (!uniqueCodesSet.has(code)) { uniqueCodesSet.add(code); if (r.box) { r.box[1] = (r.box[1] || 0) + startY; r.box[3] = (r.box[3] || 0) + startY; } allResults.push(r); } } }); } resolve(); }); } catch (e) { clearTimeout(qTimer); resolve(); } });
             if (startY + step >= height && startY < height) break;
         }
-
         drawBoundingBox(allResults);
-
-        // 条码输出
-        if (allResults.length > 0) {
-            let currentVal = resultArea.value;
-            if (currentVal.length > 0 && !currentVal.endsWith('\n')) {
-                resultArea.value += '\n';
-            }
-            allResults.forEach(result => {
-                resultArea.value += `${result.codeResult.code}\n`; 
-            });
-            resultArea.scrollTop = resultArea.scrollHeight;
-            updateBarcodeCount(); 
-        }
-
+        if (allResults.length > 0) { let currentVal = resultArea.value; if (currentVal.length > 0 && !currentVal.endsWith('\n')) { resultArea.value += '\n'; } allResults.forEach(result => { resultArea.value += `${result.codeResult.code}\n`; }); resultArea.scrollTop = resultArea.scrollHeight; updateBarcodeCount(); }
         if (shouldStop) return; 
 
-        // 2. 全文 OCR
+        // OCR logic
         const isOddPage = !pdfInfo || (pdfInfo.index % 2 !== 0);
-
         if (isOddPage) {
-            if (pdfInfo) {
-                 updateProgress(`正在处理第 ${pdfInfo.index} 页`, "AI 语义分析中...", { current: pdfInfo.index, total: pdfInfo.total }, 'loading');
-            } else {
-                 updateProgress("正在识别", "AI 语义分析中...", null, 'loading');
-            }
-
-            const fullPageBase64 = canvasHidden.toDataURL('image/jpeg', 0.6).split(',')[1];
-            
-            if (QWEN_API_KEY) {
+            if (isApiKeyEnabled && QWEN_API_KEY) { 
+                if (pdfInfo) updateProgress(`正在处理第 ${pdfInfo.index} 页`, "AI 语义分析中...", { current: pdfInfo.index, total: pdfInfo.total }, 'loading');
+                const fullPageBase64 = canvasHidden.toDataURL('image/jpeg', 0.6).split(',')[1];
                 try {
                     let ocrText = await runOCR(fullPageBase64);
                     if (shouldStop) return; 
-
-                    // 修改：OCR结果处理 - 清洗空行
-                    // 将所有换行符标准化为\n，然后过滤掉空行
                     ocrText = ocrText.replace(/(\r\n|\n|\r)/gm, "\n");
                     ocrText = ocrText.split('\n').filter(line => line.trim() !== '').join('\n');
-
-                    // 修改：智能拼接，防止标头后出现双重换行
-                    if (ocrText.length > 0) {
-                        // 如果当前文本区不为空且不以换行符结尾，则添加换行符
-                        if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) {
-                            ocrResultArea.value += '\n';
-                        }
-                        ocrResultArea.value += ocrText;
-                        ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
-                    }
-
-                } catch (e) {
-                    console.warn("OCR Failed internally:", e);
-                }
-            }
-        } else {
-            if (pdfInfo) {
-                console.log(`Skipping OCR for even page: ${pdfInfo.index}`);
+                    if (ocrText.length > 0) { if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) { ocrResultArea.value += '\n'; } ocrResultArea.value += ocrText; ocrResultArea.scrollTop = ocrResultArea.scrollHeight; }
+                } catch (e) { console.warn("OCR Failed internally:", e); }
             }
         }
     }
 
-    // --- PDF 处理函数 ---
     async function processPdfFile(file) {
         updateProgress("初始化 PDF", "读取文件结构...", null, 'loading');
-        
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-            
+            const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
             if (pdf.numPages === 0) throw new Error("PDF 为空");
-            
             for (let i = 1; i <= pdf.numPages; i++) {
-                if (shouldStop) break; 
-
-                await new Promise(resolve => setTimeout(resolve, 50)); 
-
+                if (shouldStop) break; await new Promise(resolve => setTimeout(resolve, 50)); 
                 updateProgress(`渲染第 ${i} 页`, "准备图像数据...", { current: i, total: pdf.numPages }, 'loading');
-                
                 try {
-                    const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 2.0 }); 
-
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
-
+                    const page = await pdf.getPage(i); const viewport = page.getViewport({ scale: 2.0 }); 
+                    const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
+                    canvas.height = viewport.height; canvas.width = viewport.width;
                     await page.render({ canvasContext: context, viewport: viewport }).promise;
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.7); 
-                    
                     if (shouldStop) break; 
-
-                    await Promise.race([
-                        processImage(dataUrl, { index: i, total: pdf.numPages }),
-                        new Promise((resolve) => setTimeout(() => {
-                            if (!shouldStop) console.warn(`Page ${i} Timeout - Force Skipping`);
-                            resolve(); 
-                        }, 20000))
-                    ]);
-                    
+                    await Promise.race([ processImage(dataUrl, { index: i, total: pdf.numPages }), new Promise((resolve) => setTimeout(() => { if (!shouldStop) console.warn(`Page ${i} Timeout`); resolve(); }, 20000)) ]);
                     canvas.width = 1; canvas.height = 1; 
-
-                } catch (pageError) {
-                    console.error(`Page ${i} Error:`, pageError);
-                }
+                } catch (pageError) { console.error(`Page ${i} Error:`, pageError); }
             }
-
-        } catch (error) {
-            console.error(error);
-            showMessageBox("PDF 错误", error.message, "error");
-            throw error; 
-        }
+        } catch (error) { console.error(error); showMessageBox("PDF 错误", error.message, "error"); throw error; }
     }
 
-    // --- 停止功能 ---
-    function stopTask() {
-        if (!shouldStop) {
-            shouldStop = true;
-            updateProgress("正在停止...", "等待当前操作结束", null, 'stopped');
-            stopBtn.disabled = true; 
-        }
-    }
-
-    // --- 事件监听与流程控制 ---
-
-    function handleFilesSelect(files) {
-        if (!files || files.length === 0) return;
-        
-        const validFiles = Array.from(files).filter(file => 
-            file.type === 'application/pdf' || file.type.startsWith('image/')
-        );
-
-        if (validFiles.length === 0) {
-            showMessageBox("格式错误", "没有找到支持的文件格式 (PDF/图片)。", "error");
-            return;
-        }
-
-        fileQueue = validFiles;
-        shouldStop = false;
-        
-        placeholder.style.display = 'none';
-        fileNameDisplay.classList.remove('hidden');
-        
-        if (validFiles.length > 1) {
-            fileNameDisplay.innerText = `已就绪 ${validFiles.length} 个文件`;
-            previewImg.style.display = 'none';
-            placeholder.style.display = 'block';
-            placeholder.innerHTML = `
-                <div class="mb-2 text-4xl">📚</div>
-                <div class="text-sm text-slate-500 font-bold mt-2">批量任务已就绪</div>
-                <div class="text-xs text-slate-400 mt-1">共 ${validFiles.length} 个文件等待处理</div>
-            `;
-        } else {
-            const file = validFiles[0];
-            fileNameDisplay.innerText = file.name;
-            if (file.type === 'application/pdf') {
-                previewImg.style.display = 'none';
-                placeholder.style.display = 'block';
-                placeholder.innerHTML = `
-                    <div class="mb-2 text-4xl">📄</div>
-                    <div class="text-sm text-slate-500 font-bold mt-2">PDF 文档已就绪</div>
-                    <div class="text-xs text-slate-400 mt-1">${file.name}</div>
-                `;
-            } else {
-                const reader = new FileReader();
-                reader.onload = e => {
-                    previewImg.src = e.target.result;
-                    previewImg.style.display = 'block';
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-
-        resultArea.value = '';
-        ocrResultArea.value = '';
-        updateBarcodeCount(); // 重置计数
-        pageCountDisplay.innerText = "0"; // 重置页数
-        ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-        
-        updateProgress("文件就绪", `等待处理 ${validFiles.length} 个文件`, null, 'idle');
-        
-        startBtn.disabled = false;
-        stopBtn.disabled = true; 
-        startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-    }
-
-    // 辅助函数：添加文件名标头到结果区
-    function appendFileHeader(filename) {
-        // 条码区标头 - 修改：去除额外空行，仅确保换行
-        if (resultArea.value.length > 0 && !resultArea.value.endsWith('\n')) {
-            resultArea.value += '\n';
-        }
-        // 删除之前这里存在的额外换行符逻辑
-        resultArea.value += `【${filename}】\n`;
-        resultArea.scrollTop = resultArea.scrollHeight;
-
-        // OCR区标头 - 修改：去除额外空行
-        if (ocrResultArea.value.length > 0 && !ocrResultArea.value.endsWith('\n')) {
-            ocrResultArea.value += '\n';
-        }
-        // 删除之前这里存在的额外换行符逻辑
-        ocrResultArea.value += `【${filename}】\n`;
-        ocrResultArea.scrollTop = ocrResultArea.scrollHeight;
-    }
-
-    async function startProcessing() {
-        if (!fileQueue || fileQueue.length === 0) return;
-
-        if (!QWEN_API_KEY || QWEN_API_KEY.trim() === "") {
-            const userWantsToSet = confirm("⚠️ 检测到您尚未配置 API Key。\n\n• 如果您需要使用「AI 文字识别」功能，请点击【确定】前往设置。\n• 如果您仅需使用「条码扫描」功能，请点击【取消】直接开始。");
-            if (userWantsToSet) {
-                toggleSettings();
-                return; 
-            }
-        }
-
-        startBtn.disabled = true;
-        stopBtn.disabled = false; 
-        startBtn.innerHTML = "⏳ 处理中...";
-        startBtn.classList.add('opacity-70', 'cursor-wait');
-        shouldStop = false;
-        
-        resultArea.value = '';
-        ocrResultArea.value = '';
-        updateBarcodeCount(); 
-        pageCountDisplay.innerText = "0";
-        
-        for (let i = 0; i < fileQueue.length; i++) {
-            if (shouldStop) break;
-
-            const currentFile = fileQueue[i];
-            
-            fileNameDisplay.innerText = `正在处理 (${i+1}/${fileQueue.length}): ${currentFile.name}`;
-            updateProgress(`正在处理文件 ${i+1}/${fileQueue.length}`, currentFile.name, null, 'loading');
-
-            appendFileHeader(currentFile.name);
-
-            try {
-                if (currentFile.type === 'application/pdf') {
-                    await processPdfFile(currentFile);
-                } else {
-                    await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = async (e) => {
-                            try {
-                                await Promise.race([
-                                    processImage(e.target.result),
-                                    new Promise(r => setTimeout(r, 20000))
-                                ]);
-                                resolve();
-                            } catch (err) { reject(err); }
-                        };
-                        reader.onerror = reject;
-                        reader.readAsDataURL(currentFile);
-                    });
-                }
-            } catch (err) {
-                console.error(`Error processing file ${currentFile.name}:`, err);
-            }
-        }
-        
-        if (shouldStop) {
-            updateProgress("已停止", "用户终止操作", null, 'stopped');
-        } else {
-            updateProgress("全部完成", `已处理 ${fileQueue.length} 个文件`, null, 'success');
-            fileNameDisplay.innerText = `处理完成: 共 ${fileQueue.length} 个文件`;
-        }
-        
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        startBtn.innerHTML = "<span>▶️</span> 开始深度识别";
-        startBtn.classList.remove('opacity-70', 'cursor-wait');
-        shouldStop = false;
-    }
-
-    uploadBtn.addEventListener('click', () => fileInput.click());
-    
-    fileInput.addEventListener('change', e => {
-        if(e.target.files && e.target.files.length > 0) handleFilesSelect(e.target.files);
-        fileInput.value = '';
-    });
-
-    document.addEventListener('paste', e => {
-        const items = e.clipboardData.items;
-        const files = [];
-        for (let item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                files.push(item.getAsFile());
-            }
-        }
-        if (files.length > 0) {
-            handleFilesSelect(files);
-            e.preventDefault(); 
-        }
-    });
-
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, preventDefaults, false);
-        document.body.addEventListener(eventName, e => {
-            if (e.target.id === 'dropArea') {
-                if (eventName === 'dragenter' || eventName === 'dragover') {
-                    dropArea.classList.add('border-brand-400', 'bg-brand-50');
-                } else {
-                    dropArea.classList.remove('border-brand-400', 'bg-brand-50');
-                }
-            } else {
-                dropArea.classList.remove('border-brand-400', 'bg-brand-50');
-            }
-        }, false);
-    });
-
-    dropArea.addEventListener('drop', e => {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        if (files.length > 0) {
-            handleFilesSelect(files);
-        }
-    }, false);
-
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    function clearAll() {
-        fileQueue = []; // 清空队列
-        resultArea.value = '';
-        ocrResultArea.value = '';
-        updateBarcodeCount(); 
-        pageCountDisplay.innerText = "0";
-        previewImg.src = '';
-        previewImg.style.display = 'none';
-        placeholder.style.display = 'block';
-        placeholder.innerHTML = `
-            <div class="mb-3 text-4xl opacity-30 mx-auto w-16 h-16 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-            </div>
-            <p class="text-sm font-semibold text-slate-600 mb-1">点击上传 或 拖拽文件到这里</p>
-            <p class="text-[10px] text-slate-400">支持 PDF / PNG / JPG (支持批量选择)</p>
-        `;
-        fileNameDisplay.classList.add('hidden');
-        ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-        progressSection.classList.add('hidden');
-        
-        startBtn.disabled = true;
-        stopBtn.disabled = true;
-        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
-    }
-    
-    function copyResults(areaId) {
-        const textarea = document.getElementById(areaId);
-        if (textarea && textarea.value) {
-            textarea.select();
-            document.execCommand('copy');
-            showMessageBox("复制成功", "已复制到剪贴板", "success");
-        } else {
-            showMessageBox("提示", "没有可复制的内容", "primary");
-        }
-    }
+    function stopTask() { if (!shouldStop) { shouldStop = true; updateProgress("正在停止...", "等待当前操作结束", null, 'stopped'); stopBtn.disabled = true; } }
 </script>
 
 </body>
 </html>
-
