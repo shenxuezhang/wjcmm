@@ -63,5 +63,15 @@
     "id": 1765998128035,
     "icon": "Globe",
     "color": "from-blue-500 to-cyan-500"
+  },
+  {
+    "name": "SHEIN备货下单计算器",
+    "url": "https://shenxuezhang.github.io/wjcmm/beihuo/inventory-calculation.html",
+    "description": "SHEIN备货下单计算器",
+    "category": "数据处理工具",
+    "customIconUrl": "https://raw.githubusercontent.com/shenxuezhang/wjcmm/main/icons/1770394445066_nano-banana-1770394342368.webp",
+    "id": 1770394391549,
+    "icon": "Globe",
+    "color": "from-blue-500 to-cyan-500"
   }
 ]
