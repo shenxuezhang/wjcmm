@@ -16,7 +16,9 @@ const FilterService = {
   // 质量等级筛选（多选）
   filterByQualityLevel(data, selectedLevels) {
     if (!selectedLevels || selectedLevels.length === 0) return data;
-    return data.filter(item => selectedLevels.includes(item.qualityLevel));
+    // 使用Set优化查找性能
+    const levelSet = new Set(selectedLevels);
+    return data.filter(item => levelSet.has(item.qualityLevel));
   },
 
   // 实际建议单数筛选

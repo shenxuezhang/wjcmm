@@ -10,6 +10,9 @@
   <div class="container">
     <h1>📦 SHEIN备货下单计算器</h1>
 
+    <!-- Toast提示容器 -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <!-- 功能卡片区域 -->
     <div class="function-cards-wrapper">
       <!-- 文件上传区域 -->
@@ -17,14 +20,14 @@
         <div class="card-header">
           <h2>文件操作<span id="fileNameDisplay" class="file-name-display"></span></h2>
           <button class="settings-btn" id="settingsBtn" onclick="openSettingsModal()" title="设置淘汰阈值">
-            ⚙️
+            ⚙
           </button>
         </div>
         <div class="card-content">
           <div class="file-input-wrapper">
             <input type="file" id="fileInput" accept=".xls,.xlsx" style="display: none;">
             <button class="btn btn-primary" id="fileSelectBtn" onclick="document.getElementById('fileInput').click()">
-              选择Excel文件<span id="dataCountDisplay"></span>
+              📁 选择Excel文件<span id="dataCountDisplay"></span>
             </button>
             <button class="btn btn-secondary" onclick="clearData()">清空数据</button>
             <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelectedRows()" style="display: none;" disabled>
@@ -69,19 +72,28 @@
             <option value=">=">大于等于</option>
             <option value="<=">小于等于</option>
           </select>
-          <input type="number" id="actualOrderValue" class="filter-input" placeholder="输入数值">
+          <div class="input-wrapper filter-input-wrapper">
+            <input type="number" id="actualOrderValue" class="filter-input" placeholder="输入数值">
+            <button class="input-clear-btn" type="button" onclick="clearFilterInput('actualOrderValue')">×</button>
+          </div>
         </div>
         <button class="btn btn-secondary" onclick="clearFilters()">清除筛选</button>
       </div>
       <div class="search-bar">
         <div class="search-group">
           <label>供货方号：</label>
-          <input type="text" id="supplierCodeSearch" class="search-input" placeholder="输入供货方号">
+          <div class="input-wrapper search-input-wrapper">
+            <input type="text" id="supplierCodeSearch" class="search-input" placeholder="输入供货方号">
+            <button class="input-clear-btn" type="button" onclick="clearSearchInput('supplierCodeSearch')">×</button>
+          </div>
         </div>
         <div class="search-group">
           <label>SKC：</label>
-          <input type="text" id="skcSearch" class="search-input" placeholder="输入SKC">
-          <button class="btn btn-primary" onclick="searchAll()">搜索</button>
+          <div class="input-wrapper search-input-wrapper">
+            <input type="text" id="skcSearch" class="search-input" placeholder="输入SKC">
+            <button class="input-clear-btn" type="button" onclick="clearSearchInput('skcSearch')">×</button>
+          </div>
+          <button class="btn btn-primary" onclick="searchAll()">🔍 搜索</button>
         </div>
         <button class="btn btn-secondary" onclick="clearSearch()">清除搜索</button>
       </div>
@@ -96,20 +108,32 @@
         <div class="card-content">
           <div class="statistics-list">
             <div class="statistics-item">
-              <span class="statistics-label">导入总数据量：</span>
-              <span class="statistics-value" id="statTotalImported">0</span>
+              <span class="statistics-label">导入总数据量</span>
+              <span class="statistics-value" id="statTotalImported">0 <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span></span>
             </div>
             <div class="statistics-item">
-              <span class="statistics-label">淘汰数据量：</span>
-              <span class="statistics-value statistics-eliminated" id="statEliminated">0</span>
+              <span class="statistics-label">淘汰数据量</span>
+              <span class="statistics-value statistics-eliminated" id="statEliminated">0 <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span></span>
+              <div class="statistics-progress-wrapper" id="statEliminatedProgress" style="display: none;">
+                <div class="statistics-progress-bar">
+                  <div class="statistics-progress-fill eliminated" id="statEliminatedProgressFill" style="width: 0%;"></div>
+                </div>
+                <span class="statistics-progress-text" id="statEliminatedProgressText">0%</span>
+              </div>
             </div>
             <div class="statistics-item">
-              <span class="statistics-label">入围数据量：</span>
-              <span class="statistics-value statistics-qualified" id="statQualified">0</span>
+              <span class="statistics-label">入围数据量</span>
+              <span class="statistics-value statistics-qualified" id="statQualified">0 <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span></span>
+              <div class="statistics-progress-wrapper" id="statQualifiedProgress" style="display: none;">
+                <div class="statistics-progress-bar">
+                  <div class="statistics-progress-fill qualified" id="statQualifiedProgressFill" style="width: 0%;"></div>
+                </div>
+                <span class="statistics-progress-text" id="statQualifiedProgressText">0%</span>
+              </div>
             </div>
             <div class="statistics-item">
-              <span class="statistics-label">已删除数据量：</span>
-              <span class="statistics-value statistics-deleted" id="statDeleted">0</span>
+              <span class="statistics-label">已删除数据量</span>
+              <span class="statistics-value statistics-deleted" id="statDeleted">0 <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span></span>
             </div>
           </div>
         </div>
@@ -124,7 +148,16 @@
     <!-- 数据表格 -->
     <div class="table-wrapper" id="tableWrapper" style="display: none;">
       <div class="loading-overlay" id="loadingOverlay" style="display: none;">
-        <div class="loading-spinner"></div>
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <div class="loading-text" id="loadingText">正在加载...</div>
+          <div class="progress-bar-wrapper" id="progressBarWrapper" style="display: none;">
+            <div class="progress-bar">
+              <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+          </div>
+        </div>
       </div>
       <table id="dataTable">
         <thead>
@@ -178,6 +211,48 @@
     <div id="emptyState" class="empty-state">
       <div class="empty-state-icon" id="emptyStateIcon">📊</div>
       <div id="emptyStateText">正在加载Excel解析库...</div>
+    </div>
+  </div>
+
+  <!-- 错误提示模态框 -->
+  <div id="errorModal" class="error-modal" style="display: none;">
+    <div class="error-modal-content">
+      <div class="error-modal-header">
+        <h3 id="errorModalTitle">错误</h3>
+        <button class="error-modal-close" onclick="closeErrorModal()">&times;</button>
+      </div>
+      <div class="error-modal-body">
+        <div class="error-icon">⚠️</div>
+        <div class="error-message" id="errorModalMessage"></div>
+        <div class="error-details" id="errorModalDetails" style="display: none;"></div>
+      </div>
+      <div class="error-modal-footer">
+        <button class="btn btn-primary" onclick="closeErrorModal()">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 确认提示模态框 -->
+  <div id="confirmModal" class="confirm-modal" style="display: none;">
+    <div class="confirm-modal-content">
+      <div class="confirm-modal-header">
+        <div class="confirm-icon-wrapper">
+          <div class="confirm-icon">⚠</div>
+        </div>
+        <h3>确认删除</h3>
+        <button class="confirm-modal-close" onclick="closeConfirmModal()" aria-label="关闭">×</button>
+      </div>
+      <div class="confirm-modal-body">
+        <div class="confirm-message" id="confirmModalMessage"></div>
+        <div class="confirm-warning">
+          <span class="confirm-warning-icon">ℹ</span>
+          <span class="confirm-warning-text">此操作不可撤销，请谨慎操作</span>
+        </div>
+      </div>
+      <div class="confirm-modal-footer">
+        <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+        <button class="btn btn-danger" id="confirmModalOkBtn" onclick="confirmModalCallback()">确认删除</button>
+      </div>
     </div>
   </div>
 

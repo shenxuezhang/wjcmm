@@ -27,6 +27,8 @@ const App = {
     deleted: 0            // 已删除数据量
   },
   eliminationThreshold: 0, // 淘汰阈值，默认0
+  filterDebounceTimer: null, // 筛选防抖定时器
+  _processingStats: { totalRows: 0, qualifiedCount: 0 }, // 数据处理统计（临时）
 
   // 初始化应用
   init() {
@@ -67,15 +69,6 @@ const App = {
     return this.eliminationThreshold;
   },
 
-  // 初始化应用
-  init() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.setupEventListeners());
-    } else {
-      this.setupEventListeners();
-    }
-  },
-
   // 设置事件监听器
   setupEventListeners() {
     document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
@@ -105,6 +98,31 @@ const App = {
     
     // 设置筛选和搜索事件监听
     this.setupFilterListeners();
+    
+    // 设置输入框清除按钮
+    this.setupInputClearButtons();
+  },
+
+  // 设置输入框清除按钮
+  setupInputClearButtons() {
+    const inputs = ['supplierCodeSearch', 'skcSearch', 'actualOrderValue'];
+    inputs.forEach(inputId => {
+      const input = document.getElementById(inputId);
+      if (input) {
+        // 初始状态
+        this.updateInputClearButton(inputId);
+        
+        // 输入时更新
+        input.addEventListener('input', () => {
+          this.updateInputClearButton(inputId);
+        });
+        
+        // 失去焦点时更新
+        input.addEventListener('blur', () => {
+          setTimeout(() => this.updateInputClearButton(inputId), 100);
+        });
+      }
+    });
   },
 
   // 设置tooltip位置计算
@@ -234,18 +252,16 @@ const App = {
     if (!XLSXLoader.checkLoaded()) {
       document.getElementById('skeletonWrapper').style.display = 'none';
       document.getElementById('emptyState').style.display = 'block';
-      alert('Excel解析库未加载，请刷新页面重试');
+      showError('Excel解析库未加载', 'Excel解析库未加载，请刷新页面重试。', '如果问题持续存在，请检查网络连接或联系技术支持。');
       return;
     }
 
     TableRenderer.showSkeleton();
-    TableRenderer.displayedCount = 0;
-    TableRenderer.isLoading = false;
     TableRenderer.currentDisplayedData = [];
     this.updateFileButtonCount(0);
     
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         if (typeof XLSX === 'undefined') {
           throw new Error('SheetJS库未加载，请刷新页面重试');
@@ -258,22 +274,21 @@ const App = {
         
         if (jsonData.length < 2) {
           this.updateFileButtonCount(0);
+          document.getElementById('skeletonWrapper').style.display = 'none';
+          document.getElementById('emptyState').style.display = 'block';
+          showError('文件数据为空', '导入的Excel文件没有数据行，请检查文件内容。', 'Excel文件必须包含表头和数据行，至少需要2行（1行表头 + 1行数据）。');
           return;
         }
 
         const headers = jsonData[0];
         this.headerMap = FileParser.parseHeaders(headers);
-        
-        // 调试：检查"低销尾品不允许下单"字段是否被正确映射
-        if (this.headerMap['lowSalesNotAllowed'] !== undefined) {
-          console.log('✅ "低销尾品不允许下单"字段已映射到列索引:', this.headerMap['lowSalesNotAllowed']);
-        } else {
-          console.log('⚠️ "低销尾品不允许下单"字段未找到，将跳过该淘汰机制');
-        }
-
         const validation = FileParser.validateRequiredFields(this.headerMap);
         if (!validation.isValid) {
           this.updateFileButtonCount(0);
+          document.getElementById('skeletonWrapper').style.display = 'none';
+          document.getElementById('emptyState').style.display = 'block';
+          const missingFieldNames = validation.missingFields.map(field => FIELD_NAME_MAP[field] || field);
+          showError('文件验证失败', 'Excel文件缺少必需字段，请检查表头是否正确。', missingFieldNames);
           return;
         }
 
@@ -281,38 +296,17 @@ const App = {
         let totalRows = 0; // 统计总数据行数（不包括表头）
         let qualifiedCount = 0; // 统计符合条件的数据量
         
-        for (let i = 1; i < jsonData.length; i++) {
-          const row = jsonData[i];
-          if (!row || row.length === 0) continue;
-          
-          totalRows++; // 统计总数据行数
-
-          const product = FileParser.parseProductRow(row, this.headerMap, firstSheet, i);
-          
-          // 淘汰机制1：检查"低销尾品不允许下单"字段，如果包含"是"则淘汰（对所有行生效）
-          const lowSalesValue = product.lowSalesNotAllowed;
-          if (lowSalesValue !== undefined && lowSalesValue !== null && lowSalesValue !== '') {
-            const trimmedValue = String(lowSalesValue).trim();
-            // 检查是否包含"是"（支持包含关系，不仅仅是精确匹配）
-            if (trimmedValue.includes('是')) {
-              continue; // 淘汰该行数据，不加入productData
-            }
-          }
-          
-          Calculator.calculateSuggestedOrder(product);
-          
-          // 淘汰机制2：严格检查：确保 rawSuggestedOrder 是有效数字且 >= 淘汰阈值
-          const rawOrder = product.rawSuggestedOrder;
-          const threshold = this.getEliminationThreshold();
-          if (rawOrder !== undefined && rawOrder !== null && 
-              typeof rawOrder === 'number' && 
-              !isNaN(rawOrder) && 
-              isFinite(rawOrder) && 
-              rawOrder >= threshold) {
-            this.productData.push(product);
-            qualifiedCount++;
-          }
-        }
+        // 显示进度条
+        const totalDataRows = jsonData.length - 1; // 总数据行数（不包括表头）
+        this.showProgressBar();
+        this.updateProgress(0, totalDataRows, '正在解析数据...');
+        
+        // 分批处理数据，避免阻塞UI
+        await this.processDataWithProgress(jsonData, firstSheet, totalDataRows);
+        
+        // 从进度中获取统计结果
+        totalRows = this._processingStats.totalRows || 0;
+        qualifiedCount = this._processingStats.qualifiedCount || 0;
 
         // 更新统计数据
         this.statistics.totalImported = totalRows;
@@ -339,6 +333,9 @@ const App = {
         document.getElementById('exportBtn').style.display = 'inline-block';
         document.getElementById('deleteBtn').style.display = 'inline-block';
         
+        // 隐藏进度条
+        this.hideProgressBar();
+        
         this.initFilterUI();
         this.applyFiltersAndRender();
         this.updateStatisticsDisplay();
@@ -348,12 +345,13 @@ const App = {
           this.updateDeleteButton();
         }, 100);
       } catch (error) {
+        this.hideProgressBar();
         this.updateFileButtonCount(0);
         document.getElementById('skeletonWrapper').style.display = 'none';
         document.getElementById('emptyState').style.display = 'block';
         console.error('文件处理失败:', error);
         const errorMsg = error.message || '文件处理失败，请检查文件格式是否正确';
-        alert('导入失败：' + errorMsg);
+        showError('文件导入失败', errorMsg, '请确保文件格式为.xls或.xlsx，且文件未损坏。');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -371,6 +369,112 @@ const App = {
     }
   },
 
+  // 显示进度条
+  showProgressBar() {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const progressBarWrapper = document.getElementById('progressBarWrapper');
+    const loadingText = document.getElementById('loadingText');
+    
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'flex';
+    }
+    if (progressBarWrapper) {
+      progressBarWrapper.style.display = 'flex';
+    }
+    if (loadingText) {
+      loadingText.textContent = '正在处理数据...';
+    }
+  },
+
+  // 更新进度
+  updateProgress(current, total, message) {
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressText = document.getElementById('progressText');
+    const loadingText = document.getElementById('loadingText');
+    
+    if (total === 0) return;
+    
+    const percentage = Math.min(100, Math.round((current / total) * 100));
+    
+    if (progressBarFill) {
+      progressBarFill.style.width = percentage + '%';
+    }
+    if (progressText) {
+      progressText.textContent = `${percentage}%`;
+    }
+    if (loadingText && message) {
+      loadingText.textContent = message;
+    }
+  },
+
+  // 隐藏进度条
+  hideProgressBar() {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const progressBarWrapper = document.getElementById('progressBarWrapper');
+    
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+    if (progressBarWrapper) {
+      progressBarWrapper.style.display = 'none';
+    }
+  },
+
+  // 分批处理数据并显示进度
+  async processDataWithProgress(jsonData, firstSheet, totalDataRows) {
+    this._processingStats = { totalRows: 0, qualifiedCount: 0 };
+    const batchSize = 50; // 每批处理50行
+    
+    for (let i = 1; i < jsonData.length; i += batchSize) {
+      const endIndex = Math.min(i + batchSize, jsonData.length);
+      
+      // 处理当前批次
+      for (let j = i; j < endIndex; j++) {
+        const row = jsonData[j];
+        if (!row || row.length === 0) continue;
+        
+        this._processingStats.totalRows++;
+        
+        const product = FileParser.parseProductRow(row, this.headerMap, firstSheet, j);
+        
+        // 淘汰机制1：检查"低销尾品不允许下单"字段
+        const lowSalesValue = product.lowSalesNotAllowed;
+        if (lowSalesValue !== undefined && lowSalesValue !== null && lowSalesValue !== '') {
+          const trimmedValue = String(lowSalesValue).trim();
+          if (trimmedValue.includes('是')) {
+            continue; // 淘汰该行数据
+          }
+        }
+        
+        Calculator.calculateSuggestedOrder(product);
+        
+        // 淘汰机制2：严格检查 rawSuggestedOrder
+        const rawOrder = product.rawSuggestedOrder;
+        const threshold = this.getEliminationThreshold();
+        if (rawOrder !== undefined && rawOrder !== null && 
+            typeof rawOrder === 'number' && 
+            !isNaN(rawOrder) && 
+            isFinite(rawOrder) && 
+            rawOrder >= threshold) {
+          this.productData.push(product);
+          this._processingStats.qualifiedCount++;
+        }
+      }
+      
+      // 更新进度
+      const processed = Math.min(endIndex - 1, totalDataRows);
+      const progressMessage = `正在处理数据... (${processed}/${totalDataRows})`;
+      this.updateProgress(processed, totalDataRows, progressMessage);
+      
+      // 让出控制权，避免阻塞UI
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    
+    // 完成时更新到100%
+    this.updateProgress(totalDataRows, totalDataRows, '数据处理完成！');
+    await new Promise(resolve => setTimeout(resolve, 200));
+  },
+
   // 更新文件选择按钮显示的数据条数
   updateFileButtonCount(count) {
     const countDisplay = document.getElementById('dataCountDisplay');
@@ -383,22 +487,64 @@ const App = {
 
   // 更新统计数据显示
   updateStatisticsDisplay() {
-    document.getElementById('statTotalImported').textContent = this.statistics.totalImported;
-    document.getElementById('statEliminated').textContent = this.statistics.eliminated;
-    document.getElementById('statQualified').textContent = this.statistics.qualified;
-    document.getElementById('statDeleted').textContent = this.statistics.deleted;
+    const totalImported = this.statistics.totalImported;
+    const eliminated = this.statistics.eliminated;
+    const qualified = this.statistics.qualified;
+    const deleted = this.statistics.deleted;
+    
+    document.getElementById('statTotalImported').innerHTML = totalImported + ' <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span>';
+    document.getElementById('statEliminated').innerHTML = eliminated + ' <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span>';
+    document.getElementById('statQualified').innerHTML = qualified + ' <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span>';
+    document.getElementById('statDeleted').innerHTML = deleted + ' <span style="font-size: 14px; font-weight: 400; color: #656d76;">条</span>';
+    
+    // 更新占比进度条
+    if (totalImported > 0) {
+      const eliminatedPercent = Math.round((eliminated / totalImported) * 100);
+      const qualifiedPercent = Math.round((qualified / totalImported) * 100);
+      
+      const eliminatedProgress = document.getElementById('statEliminatedProgress');
+      const eliminatedProgressFill = document.getElementById('statEliminatedProgressFill');
+      const eliminatedProgressText = document.getElementById('statEliminatedProgressText');
+      
+      if (eliminatedProgress && eliminatedProgressFill && eliminatedProgressText) {
+        eliminatedProgress.style.display = 'flex';
+        eliminatedProgressFill.style.width = eliminatedPercent + '%';
+        eliminatedProgressText.textContent = eliminatedPercent + '%';
+      }
+      
+      const qualifiedProgress = document.getElementById('statQualifiedProgress');
+      const qualifiedProgressFill = document.getElementById('statQualifiedProgressFill');
+      const qualifiedProgressText = document.getElementById('statQualifiedProgressText');
+      
+      if (qualifiedProgress && qualifiedProgressFill && qualifiedProgressText) {
+        qualifiedProgress.style.display = 'flex';
+        qualifiedProgressFill.style.width = qualifiedPercent + '%';
+        qualifiedProgressText.textContent = qualifiedPercent + '%';
+      }
+    } else {
+      const eliminatedProgress = document.getElementById('statEliminatedProgress');
+      const qualifiedProgress = document.getElementById('statQualifiedProgress');
+      if (eliminatedProgress) eliminatedProgress.style.display = 'none';
+      if (qualifiedProgress) qualifiedProgress.style.display = 'none';
+    }
   },
 
   // 清空数据
   clearData() {
+    const tableWrapper = document.getElementById('tableWrapper');
+    if (tableWrapper && tableWrapper.style.display !== 'none') {
+      // 添加缩放动画
+      tableWrapper.classList.add('scaling');
+      setTimeout(() => {
+        tableWrapper.classList.remove('scaling');
+      }, 300);
+    }
+    
     this.productData = [];
     this.headerMap = {};
     this.selectedRows.clear();
     this.resetFilterState();
-    TableRenderer.displayedCount = 0;
-    TableRenderer.isLoading = false;
     TableRenderer.currentDisplayedData = [];
-    TableRenderer.currentDisplayedData = []; // 清空当前显示数据
     this.filteredIndicesMap.clear(); // 清空索引映射
     
     // 重置统计数据
@@ -708,9 +854,19 @@ const App = {
       ? '确定要删除这条数据吗？'
       : `确定要删除选中的 ${selectedCount} 条数据吗？`;
     
-    if (!confirm(confirmMsg)) {
-      return;
+    showConfirm(confirmMsg, () => {
+      this.executeDelete();
+    });
+  },
+
+  // 执行删除操作
+  executeDelete() {
+    // 先关闭确认弹窗
+    if (typeof window.closeConfirmModal === 'function') {
+      window.closeConfirmModal();
     }
+    
+    const selectedCount = this.selectedRows.size;
     
     // 从大到小排序，避免删除时索引变化影响
     const sortedIndices = Array.from(this.selectedRows).sort((a, b) => b - a);
@@ -752,8 +908,6 @@ const App = {
     
     // 重置表格渲染状态，强制重新渲染
     TableRenderer.currentDisplayedData = [];
-    TableRenderer.displayedCount = 0;
-    TableRenderer.isLoading = false;
     
     // 更新数据条数
     this.updateFileButtonCount(this.productData.length);
@@ -901,7 +1055,8 @@ const App = {
       actualOrderValue.addEventListener('input', () => {
         const value = actualOrderValue.value === '' ? null : Number(actualOrderValue.value);
         this.filterState.actualSuggestedOrder.value = value;
-        this.applyFiltersAndRender();
+        // 防抖处理：延迟300ms执行筛选，避免频繁触发
+        this.debounceFilter();
       });
     }
 
@@ -924,8 +1079,24 @@ const App = {
     }
   },
 
+  // 防抖筛选（延迟执行，避免频繁触发）
+  debounceFilter() {
+    if (this.filterDebounceTimer) {
+      clearTimeout(this.filterDebounceTimer);
+    }
+    this.filterDebounceTimer = setTimeout(() => {
+      this.applyFiltersAndRender();
+      this.filterDebounceTimer = null;
+    }, 300); // 300ms延迟
+  },
+
   // 应用筛选和搜索并渲染
   applyFiltersAndRender() {
+    // 清除防抖定时器（如果存在）
+    if (this.filterDebounceTimer) {
+      clearTimeout(this.filterDebounceTimer);
+      this.filterDebounceTimer = null;
+    }
     // 如果表格已有数据显示且 currentDisplayedData 存在，则只筛选当前显示的数据
     const tbody = document.getElementById('tableBody');
     const rows = tbody ? tbody.querySelectorAll('tr') : [];
@@ -976,6 +1147,8 @@ const App = {
     const rows = tbody ? tbody.querySelectorAll('tr') : [];
     
     if (rows.length > 0) {
+      // 显示Toast提示
+      this.showToast('筛选条件已清除', 'success');
       // 显示所有行
       rows.forEach(row => {
         row.style.display = '';
@@ -997,6 +1170,7 @@ const App = {
     const actualOrderValue = document.getElementById('actualOrderValue');
     if (actualOrderValue) {
       actualOrderValue.value = '';
+      this.updateInputClearButton('actualOrderValue');
     }
     
     this.updateQualityLevelButtonText();
@@ -1010,12 +1184,15 @@ const App = {
     
     if (supplierCodeInput) {
       this.filterState.search.supplierCode = supplierCodeInput.value;
+      this.updateInputClearButton('supplierCodeSearch');
     }
     if (skcInput) {
       this.filterState.search.skc = skcInput.value;
+      this.updateInputClearButton('skcSearch');
     }
     
     this.applyFiltersAndRender();
+    this.showToast('搜索完成', 'success');
   },
 
   // 清除搜索
@@ -1026,14 +1203,65 @@ const App = {
     const supplierCodeInput = document.getElementById('supplierCodeSearch');
     if (supplierCodeInput) {
       supplierCodeInput.value = '';
+      this.updateInputClearButton('supplierCodeSearch');
     }
     
     const skcInput = document.getElementById('skcSearch');
     if (skcInput) {
       skcInput.value = '';
+      this.updateInputClearButton('skcSearch');
     }
     
     this.applyFiltersAndRender();
+    this.showToast('搜索条件已清除', 'success');
+  },
+
+  // Toast提示功能
+  showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icons = {
+      success: '✓',
+      error: '✕',
+      info: 'ℹ'
+    };
+    
+    toast.innerHTML = `
+      <span class="toast-icon">${icons[type] || icons.info}</span>
+      <span class="toast-message">${message}</span>
+      <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // 自动消失（2秒）
+    setTimeout(() => {
+      toast.classList.add('hiding');
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.remove();
+        }
+      }, 300);
+    }, 2000);
+  },
+
+  // 更新输入框清除按钮显示状态
+  updateInputClearButton(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    
+    const wrapper = input.closest('.input-wrapper');
+    if (!wrapper) return;
+    
+    if (input.value.trim() !== '') {
+      wrapper.classList.add('has-value');
+    } else {
+      wrapper.classList.remove('has-value');
+    }
   },
 
   // 导出Excel（导出当前筛选后的数据）
@@ -1070,6 +1298,31 @@ function searchAll() {
 
 function clearSearch() {
   App.clearSearch();
+}
+
+// 清除输入框内容
+function clearSearchInput(inputId) {
+  const input = document.getElementById(inputId);
+  if (input) {
+    input.value = '';
+    App.updateInputClearButton(inputId);
+    if (inputId === 'supplierCodeSearch' || inputId === 'skcSearch') {
+      App.filterState.search[inputId === 'supplierCodeSearch' ? 'supplierCode' : 'skc'] = '';
+      App.applyFiltersAndRender();
+    }
+  }
+}
+
+function clearFilterInput(inputId) {
+  const input = document.getElementById(inputId);
+  if (input) {
+    input.value = '';
+    App.updateInputClearButton(inputId);
+    if (inputId === 'actualOrderValue') {
+      App.filterState.actualSuggestedOrder.value = null;
+      App.debounceFilter();
+    }
+  }
 }
 
 function toggleQualityLevelDropdown() {
@@ -1134,6 +1387,79 @@ function clearQualityLevels() {
   App.clearQualityLevels();
 }
 
+// 错误提示和确认提示相关函数
+let confirmModalCallback = null;
+
+// 显示错误提示（全局函数）
+window.showError = function(title, message, details) {
+  const modal = document.getElementById('errorModal');
+  const titleEl = document.getElementById('errorModalTitle');
+  const messageEl = document.getElementById('errorModalMessage');
+  const detailsEl = document.getElementById('errorModalDetails');
+  
+  if (titleEl) titleEl.textContent = title || '错误';
+  if (messageEl) messageEl.textContent = message || '发生未知错误';
+  
+  if (details && detailsEl) {
+    detailsEl.style.display = 'block';
+    if (Array.isArray(details)) {
+      detailsEl.innerHTML = '<strong>详细信息：</strong><ul>' + 
+        details.map(item => `<li>${item}</li>`).join('') + '</ul>';
+    } else {
+      detailsEl.innerHTML = `<strong>详细信息：</strong><div>${details}</div>`;
+    }
+  } else {
+    if (detailsEl) detailsEl.style.display = 'none';
+  }
+  
+  if (modal) modal.style.display = 'flex';
+};
+
+// 关闭错误提示
+window.closeErrorModal = function() {
+  const modal = document.getElementById('errorModal');
+  if (modal) modal.style.display = 'none';
+};
+
+// 显示确认提示
+window.showConfirm = function(message, callback) {
+  const modal = document.getElementById('confirmModal');
+  const messageEl = document.getElementById('confirmModalMessage');
+  
+  if (messageEl) messageEl.textContent = message || '确定要执行此操作吗？';
+  confirmModalCallback = callback;
+  
+  if (modal) modal.style.display = 'flex';
+};
+
+// 确认提示回调
+window.confirmModalCallback = function() {
+  if (confirmModalCallback) {
+    confirmModalCallback();
+    confirmModalCallback = null;
+  }
+  window.closeConfirmModal();
+};
+
+// 关闭确认提示
+window.closeConfirmModal = function() {
+  const modal = document.getElementById('confirmModal');
+  if (modal) modal.style.display = 'none';
+  confirmModalCallback = null;
+}
+
+// 字段名到中文名称映射（用于显示缺失字段）
+const FIELD_NAME_MAP = {
+  'sku': 'SKU',
+  'sales7Days': '近7天销量',
+  'leadTime': '货期',
+  'bufferDays': '备货天数',
+  'pendingShipment': '待发货',
+  'inTransit': '在途',
+  'pendingShelf': '待上架',
+  'sheinStock': 'SHEIN仓库存'
+};
+
 // 设置相关全局函数
 function openSettingsModal() {
   const modal = document.getElementById('settingsModal');
@@ -1163,9 +1489,19 @@ function saveSettings() {
         App.applyFiltersAndRender();
       }
       
-      alert('设置已保存！');
+      // 成功提示（使用简单的提示，不需要错误模态框）
+      const successMsg = '淘汰阈值设置已成功保存。';
+      if (typeof window.showError === 'function') {
+        window.showError('设置已保存', successMsg, '');
+      } else {
+        alert(successMsg);
+      }
     } else {
-      alert('请输入有效的数值！');
+      if (typeof window.showError === 'function') {
+        window.showError('输入无效', '请输入有效的数值。', '淘汰阈值必须是数字，可以包含小数。');
+      } else {
+        alert('请输入有效的数值！');
+      }
     }
   }
 }

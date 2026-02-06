@@ -1,7 +1,5 @@
 // 表格渲染工具
 const TableRenderer = {
-  displayedCount: 0,
-  isLoading: false,
   filteredIndicesMap: null,
   currentDisplayedData: [], // 当前已显示的数据
 
@@ -35,8 +33,6 @@ const TableRenderer = {
 
   // 渲染表格（一次性渲染所有数据）
   renderLazy(productData, filteredIndicesMap) {
-    this.displayedCount = productData.length;
-    this.isLoading = false;
     this.filteredIndicesMap = filteredIndicesMap || null;
     this.currentDisplayedData = [...productData]; // 保存当前显示的数据
     const tbody = document.getElementById('tableBody');
@@ -134,15 +130,18 @@ const TableRenderer = {
     // 对已显示的数据进行筛选
     const filteredData = FilterService.applyFilters(displayedProducts, filterState);
     
-    // 创建匹配数据的索引 Set 用于快速查找
+    // 创建匹配数据的索引 Set 用于快速查找（优化：使用Map提高查找效率）
     const matchedIndices = new Set();
+    const productToIndexMap = new Map();
+    allDisplayedData.forEach((item) => {
+      productToIndexMap.set(item.product, item.index);
+    });
+    
     filteredData.forEach(filteredItem => {
-      // 通过索引匹配
-      allDisplayedData.forEach((item, idx) => {
-        if (item.product === filteredItem) {
-          matchedIndices.add(item.index);
-        }
-      });
+      const index = productToIndexMap.get(filteredItem);
+      if (index !== undefined) {
+        matchedIndices.add(index);
+      }
     });
     
     // 遍历所有行，根据筛选结果显示/隐藏
@@ -157,69 +156,6 @@ const TableRenderer = {
     });
     
     return visibleCount;
-  },
-
-  // 加载下一批数据
-  loadNextBatch(productData) {
-    if (this.isLoading || this.displayedCount >= productData.length) {
-      document.getElementById('loadingOverlay').style.display = 'none';
-      this.isLoading = false;
-      
-      if (this.displayedCount >= productData.length && App.selectedRows.size > 0) {
-        const tbody = document.getElementById('tableBody');
-        const rows = tbody.querySelectorAll('tr');
-        rows.forEach((row, filteredIndex) => {
-          const originalIndex = this.filteredIndicesMap ? 
-            (this.filteredIndicesMap.get(filteredIndex) !== undefined ? this.filteredIndicesMap.get(filteredIndex) : filteredIndex) : 
-            filteredIndex;
-          if (App.selectedRows.has(originalIndex)) {
-            row.classList.add('selected');
-            const checkbox = row.querySelector('input[type="checkbox"]');
-            if (checkbox) {
-              checkbox.checked = true;
-            }
-          }
-        });
-        App.updateSelectAllCheckbox();
-        App.updateDeleteButton();
-      }
-      return;
-    }
-
-    this.isLoading = true;
-    const tbody = document.getElementById('tableBody');
-    const endIndex = Math.min(this.displayedCount + BATCH_SIZE, productData.length);
-
-    const fragment = document.createDocumentFragment();
-    
-    for (let i = this.displayedCount; i < endIndex; i++) {
-      const product = productData[i];
-      const tr = this.createTableRow(product, i);
-      
-      if (App.selectedRows.has(i)) {
-        tr.classList.add('selected');
-        const checkbox = tr.querySelector('input[type="checkbox"]');
-        if (checkbox) {
-          checkbox.checked = true;
-        }
-      }
-      
-      fragment.appendChild(tr);
-    }
-
-    tbody.appendChild(fragment);
-    this.displayedCount = endIndex;
-
-    if (this.displayedCount < productData.length) {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          this.loadNextBatch(productData);
-        }, 10);
-      });
-    } else {
-      document.getElementById('loadingOverlay').style.display = 'none';
-      this.isLoading = false;
-    }
   },
 
   // 创建表格行

@@ -34,6 +34,3 @@ const XLSX_CDN_SOURCES = [
   'https://unpkg.com/xlsx@0.20.1/dist/xlsx.full.min.js',
   'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js'
 ];
-
-// 批量渲染配置
-const BATCH_SIZE = 50;

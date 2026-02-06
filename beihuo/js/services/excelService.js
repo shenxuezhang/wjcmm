@@ -7,7 +7,11 @@ const ExcelService = {
     }
 
     if (!XLSXLoader.checkLoaded()) {
-      alert('Excel导出库未加载，请刷新页面重试');
+      if (typeof window.showError === 'function') {
+        window.showError('Excel导出库未加载', 'Excel导出库未加载，请刷新页面重试。', '');
+      } else {
+        alert('Excel导出库未加载，请刷新页面重试');
+      }
       return;
     }
 
@@ -28,7 +32,11 @@ const ExcelService = {
       XLSX.writeFile(wb, fileName);
     } catch (error) {
       console.error('导出失败:', error);
-      alert('导出失败：' + error.message);
+      if (typeof window.showError === 'function') {
+        window.showError('导出失败', error.message || '导出过程中发生错误。', '请确保数据格式正确，或联系技术支持。');
+      } else {
+        alert('导出失败：' + error.message);
+      }
     }
   }
 };

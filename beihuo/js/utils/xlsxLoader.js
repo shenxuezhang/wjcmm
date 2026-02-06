@@ -55,8 +55,16 @@ const XLSXLoader = {
 
   // 显示错误提示
   showError() {
-    const errorMsg = 'Excel解析库加载失败，请检查网络连接后刷新页面重试。\n\n如果问题持续存在，请：\n1. 检查网络连接\n2. 尝试使用VPN或代理\n3. 联系技术支持';
-    alert(errorMsg);
+    const errorMsg = 'Excel解析库加载失败，请检查网络连接后刷新页面重试。';
+    const details = ['1. 检查网络连接', '2. 尝试使用VPN或代理', '3. 联系技术支持'];
+    
+    // 使用全局错误提示函数（如果已定义）
+    if (typeof window.showError === 'function') {
+      window.showError('Excel解析库加载失败', errorMsg, details);
+    } else {
+      // 降级到alert（仅在showError未定义时）
+      alert(errorMsg + '\n\n如果问题持续存在，请：\n' + details.join('\n'));
+    }
     
     const emptyStateIcon = document.getElementById('emptyStateIcon');
     const emptyStateText = document.getElementById('emptyStateText');
