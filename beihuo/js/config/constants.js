@@ -21,7 +21,8 @@ const FIELD_MAPPING = {
   '备货': 'bufferDays',
   '待发货': 'pendingShipment',
   '在途': 'inTransit',
-  '待上架': 'pendingShelf'
+  '待上架': 'pendingShelf',
+  '低销尾品不允许下单': 'lowSalesNotAllowed'
 };
 
 // 必需字段列表

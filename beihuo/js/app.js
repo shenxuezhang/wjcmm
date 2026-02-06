@@ -11,7 +11,7 @@ const App = {
   filterState: {
     qualityLevels: [],
     actualSuggestedOrder: {
-      operator: '=',
+      operator: '<',
       value: null
     },
     search: {
@@ -20,6 +20,52 @@ const App = {
     }
   },
   filteredIndicesMap: new Map(),
+  statistics: {
+    totalImported: 0,      // 导入总数据量
+    eliminated: 0,         // 淘汰数据量
+    qualified: 0,          // 入围数据量（当前productData.length）
+    deleted: 0            // 已删除数据量
+  },
+  eliminationThreshold: 0, // 淘汰阈值，默认0
+
+  // 初始化应用
+  init() {
+    // 从localStorage加载设置
+    this.loadSettings();
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.setupEventListeners());
+    } else {
+      this.setupEventListeners();
+    }
+  },
+
+  // 加载设置
+  loadSettings() {
+    const savedThreshold = localStorage.getItem('eliminationThreshold');
+    if (savedThreshold !== null) {
+      const threshold = Number(savedThreshold);
+      if (!isNaN(threshold) && isFinite(threshold)) {
+        this.eliminationThreshold = threshold;
+      }
+    }
+  },
+
+  // 保存设置
+  saveSettings(threshold) {
+    const numThreshold = Number(threshold);
+    if (!isNaN(numThreshold) && isFinite(numThreshold)) {
+      this.eliminationThreshold = numThreshold;
+      localStorage.setItem('eliminationThreshold', numThreshold.toString());
+      return true;
+    }
+    return false;
+  },
+
+  // 获取淘汰阈值
+  getEliminationThreshold() {
+    return this.eliminationThreshold;
+  },
 
   // 初始化应用
   init() {
@@ -75,14 +121,69 @@ const App = {
         if (tooltip) {
           const updatePosition = () => {
             const rect = icon.getBoundingClientRect();
-            tooltip.style.visibility = 'visible';
-            const tooltipHeight = tooltip.offsetHeight || 100;
-            const left = rect.left + rect.width / 2;
-            const top = rect.top - tooltipHeight - 8;
             
+            // 先临时显示tooltip以获取实际尺寸
+            tooltip.style.visibility = 'visible';
+            tooltip.style.opacity = '0';
+            tooltip.style.left = '0';
+            tooltip.style.top = '0';
+            
+            // 获取tooltip的实际尺寸
+            const tooltipRect = tooltip.getBoundingClientRect();
+            const tooltipWidth = tooltipRect.width || tooltip.offsetWidth || 300;
+            const tooltipHeight = tooltipRect.height || tooltip.offsetHeight || 100;
+            
+            // 获取视口尺寸
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // 计算初始位置（图标中心上方）
+            let left = rect.left + rect.width / 2;
+            let top = rect.top - tooltipHeight - 8;
+            
+            // 边界检测和调整
+            const padding = 10; // 距离视口边缘的最小距离
+            
+            // 水平方向调整：确保tooltip不超出左右边界
+            const tooltipHalfWidth = tooltipWidth / 2;
+            if (left - tooltipHalfWidth < padding) {
+              // 超出左边界，调整到左边界
+              left = tooltipHalfWidth + padding;
+            } else if (left + tooltipHalfWidth > viewportWidth - padding) {
+              // 超出右边界，调整到右边界
+              left = viewportWidth - tooltipHalfWidth - padding;
+            }
+            
+            // 垂直方向调整：确保tooltip不超出上下边界
+            let showBelow = false;
+            if (top < padding) {
+              // 超出上边界，显示在图标下方
+              top = rect.bottom + 8;
+              showBelow = true;
+              
+              // 如果下方也超出，调整到视口内
+              if (top + tooltipHeight > viewportHeight - padding) {
+                top = viewportHeight - tooltipHeight - padding;
+                showBelow = false;
+              }
+            } else if (top + tooltipHeight > viewportHeight - padding) {
+              // 超出下边界，调整到视口内
+              top = viewportHeight - tooltipHeight - padding;
+              showBelow = false;
+            }
+            
+            // 根据显示位置调整箭头
+            if (showBelow) {
+              tooltip.classList.add('tooltip-below');
+            } else {
+              tooltip.classList.remove('tooltip-below');
+            }
+            
+            // 设置最终位置并显示
             tooltip.style.left = left + 'px';
             tooltip.style.top = top + 'px';
             tooltip.style.transform = 'translateX(-50%)';
+            tooltip.style.opacity = '1';
           };
 
           setTimeout(() => {
@@ -140,6 +241,7 @@ const App = {
     TableRenderer.showSkeleton();
     TableRenderer.displayedCount = 0;
     TableRenderer.isLoading = false;
+    TableRenderer.currentDisplayedData = [];
     this.updateFileButtonCount(0);
     
     const reader = new FileReader();
@@ -161,6 +263,13 @@ const App = {
 
         const headers = jsonData[0];
         this.headerMap = FileParser.parseHeaders(headers);
+        
+        // 调试：检查"低销尾品不允许下单"字段是否被正确映射
+        if (this.headerMap['lowSalesNotAllowed'] !== undefined) {
+          console.log('✅ "低销尾品不允许下单"字段已映射到列索引:', this.headerMap['lowSalesNotAllowed']);
+        } else {
+          console.log('⚠️ "低销尾品不允许下单"字段未找到，将跳过该淘汰机制');
+        }
 
         const validation = FileParser.validateRequiredFields(this.headerMap);
         if (!validation.isValid) {
@@ -169,36 +278,70 @@ const App = {
         }
 
         this.productData = [];
+        let totalRows = 0; // 统计总数据行数（不包括表头）
+        let qualifiedCount = 0; // 统计符合条件的数据量
+        
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (!row || row.length === 0) continue;
+          
+          totalRows++; // 统计总数据行数
 
           const product = FileParser.parseProductRow(row, this.headerMap, firstSheet, i);
+          
+          // 淘汰机制1：检查"低销尾品不允许下单"字段，如果包含"是"则淘汰（对所有行生效）
+          const lowSalesValue = product.lowSalesNotAllowed;
+          if (lowSalesValue !== undefined && lowSalesValue !== null && lowSalesValue !== '') {
+            const trimmedValue = String(lowSalesValue).trim();
+            // 检查是否包含"是"（支持包含关系，不仅仅是精确匹配）
+            if (trimmedValue.includes('是')) {
+              continue; // 淘汰该行数据，不加入productData
+            }
+          }
+          
           Calculator.calculateSuggestedOrder(product);
           
-          if (product.rawSuggestedOrder >= 0) {
+          // 淘汰机制2：严格检查：确保 rawSuggestedOrder 是有效数字且 >= 淘汰阈值
+          const rawOrder = product.rawSuggestedOrder;
+          const threshold = this.getEliminationThreshold();
+          if (rawOrder !== undefined && rawOrder !== null && 
+              typeof rawOrder === 'number' && 
+              !isNaN(rawOrder) && 
+              isFinite(rawOrder) && 
+              rawOrder >= threshold) {
             this.productData.push(product);
+            qualifiedCount++;
           }
         }
+
+        // 更新统计数据
+        this.statistics.totalImported = totalRows;
+        this.statistics.eliminated = totalRows - qualifiedCount;
+        this.statistics.qualified = qualifiedCount;
+        this.statistics.deleted = 0; // 每次导入时重置已删除数据量
 
         if (this.productData.length === 0) {
           document.getElementById('skeletonWrapper').style.display = 'none';
           document.getElementById('emptyState').style.display = 'block';
           this.updateFileButtonCount(0);
+          this.updateStatisticsDisplay();
           return;
         }
 
         this.selectedRows.clear();
         this.resetFilterState();
         this.updateFileButtonCount(this.productData.length);
+        this.updateFileNameDisplay(file.name);
         document.getElementById('skeletonWrapper').style.display = 'none';
         document.getElementById('tableWrapper').style.display = 'block';
         document.getElementById('filterSection').style.display = 'block';
+        document.getElementById('statisticsSection').style.display = 'block';
         document.getElementById('exportBtn').style.display = 'inline-block';
         document.getElementById('deleteBtn').style.display = 'inline-block';
         
         this.initFilterUI();
         this.applyFiltersAndRender();
+        this.updateStatisticsDisplay();
         
         setTimeout(() => {
           this.updateSelectAllCheckbox();
@@ -216,6 +359,18 @@ const App = {
     reader.readAsArrayBuffer(file);
   },
 
+  // 更新文件名显示
+  updateFileNameDisplay(fileName) {
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    if (fileNameDisplay && fileName) {
+      fileNameDisplay.textContent = fileName;
+      fileNameDisplay.title = fileName; // 添加完整文件名的提示
+    } else if (fileNameDisplay) {
+      fileNameDisplay.textContent = '';
+      fileNameDisplay.title = '';
+    }
+  },
+
   // 更新文件选择按钮显示的数据条数
   updateFileButtonCount(count) {
     const countDisplay = document.getElementById('dataCountDisplay');
@@ -226,6 +381,14 @@ const App = {
     }
   },
 
+  // 更新统计数据显示
+  updateStatisticsDisplay() {
+    document.getElementById('statTotalImported').textContent = this.statistics.totalImported;
+    document.getElementById('statEliminated').textContent = this.statistics.eliminated;
+    document.getElementById('statQualified').textContent = this.statistics.qualified;
+    document.getElementById('statDeleted').textContent = this.statistics.deleted;
+  },
+
   // 清空数据
   clearData() {
     this.productData = [];
@@ -234,21 +397,36 @@ const App = {
     this.resetFilterState();
     TableRenderer.displayedCount = 0;
     TableRenderer.isLoading = false;
+    TableRenderer.currentDisplayedData = [];
+    TableRenderer.currentDisplayedData = []; // 清空当前显示数据
+    this.filteredIndicesMap.clear(); // 清空索引映射
+    
+    // 重置统计数据
+    this.statistics.totalImported = 0;
+    this.statistics.eliminated = 0;
+    this.statistics.qualified = 0;
+    this.statistics.deleted = 0;
+    
     document.getElementById('tableWrapper').style.display = 'none';
     document.getElementById('skeletonWrapper').style.display = 'none';
     document.getElementById('filterSection').style.display = 'none';
+    document.getElementById('statisticsSection').style.display = 'none';
     document.getElementById('emptyState').style.display = 'block';
     document.getElementById('fileInput').value = '';
     document.getElementById('exportBtn').style.display = 'none';
     document.getElementById('deleteBtn').style.display = 'none';
     document.getElementById('selectAllCheckbox').checked = false;
     this.updateFileButtonCount(0);
+    this.updateFileNameDisplay('');
+    this.updateStatisticsDisplay();
     this.updateDeleteButton();
   },
 
   // 切换行选中状态
   toggleRowSelection(index, checked) {
     const originalIndex = this.getOriginalIndex(index);
+    if (originalIndex === -1 || originalIndex === undefined) return;
+    
     if (checked) {
       this.selectedRows.add(originalIndex);
     } else {
@@ -261,6 +439,18 @@ const App = {
 
   // 获取原始数据索引
   getOriginalIndex(filteredIndex) {
+    // 如果 currentDisplayedData 存在，说明是筛选后的数据，需要通过产品对象查找原始索引
+    if (TableRenderer.currentDisplayedData && TableRenderer.currentDisplayedData.length > 0) {
+      const product = TableRenderer.currentDisplayedData[filteredIndex];
+      if (product) {
+        const originalIndex = this.productData.findIndex(p => p === product);
+        if (originalIndex !== -1) {
+          return originalIndex;
+        }
+      }
+    }
+    
+    // 否则使用 filteredIndicesMap 或直接返回 filteredIndex
     if (this.filteredIndicesMap && this.filteredIndicesMap.has(filteredIndex)) {
       return this.filteredIndicesMap.get(filteredIndex);
     }
@@ -284,34 +474,58 @@ const App = {
     }
   },
 
-  // 更新全选复选框状态
+  // 更新全选复选框状态（基于所有筛选后的数据）
   updateSelectAllCheckbox() {
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     if (!selectAllCheckbox) return;
     
+    // 获取所有筛选后的数据
     const filteredData = FilterService.applyFilters(this.productData, this.filterState);
     const filteredCount = filteredData.length;
-    
-    let selectedInFiltered = 0;
-    if (this.filteredIndicesMap) {
-      filteredData.forEach((item, filteredIndex) => {
-        const originalIndex = this.filteredIndicesMap.get(filteredIndex);
-        if (this.selectedRows.has(originalIndex)) {
-          selectedInFiltered++;
-        }
-      });
-    } else {
-      filteredData.forEach((item, index) => {
-        if (this.selectedRows.has(index)) {
-          selectedInFiltered++;
-        }
-      });
-    }
     
     if (filteredCount === 0) {
       selectAllCheckbox.checked = false;
       selectAllCheckbox.indeterminate = false;
-    } else if (selectedInFiltered === 0) {
+      return;
+    }
+    
+    // 统计所有筛选后数据中已选中的数量
+    let selectedInFiltered = 0;
+    filteredData.forEach((item) => {
+      const originalIndex = this.productData.indexOf(item);
+      if (originalIndex !== -1 && this.selectedRows.has(originalIndex)) {
+        selectedInFiltered++;
+      }
+    });
+    
+    // 更新已显示行的复选框状态
+    const tbody = document.getElementById('tableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    rows.forEach((row) => {
+      if (row.style.display === 'none') return;
+      
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      if (checkbox) {
+        const filteredIndex = parseInt(checkbox.dataset.index);
+        if (filteredIndex !== undefined && !isNaN(filteredIndex)) {
+          const product = TableRenderer.currentDisplayedData[filteredIndex];
+          if (product) {
+            const originalIndex = this.productData.indexOf(product);
+            if (originalIndex !== -1) {
+              checkbox.checked = this.selectedRows.has(originalIndex);
+              if (checkbox.checked) {
+                row.classList.add('selected');
+              } else {
+                row.classList.remove('selected');
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // 更新全选复选框状态
+    if (selectedInFiltered === 0) {
       selectAllCheckbox.checked = false;
       selectAllCheckbox.indeterminate = false;
     } else if (selectedInFiltered === filteredCount) {
@@ -323,24 +537,56 @@ const App = {
     }
   },
 
-  // 全选/取消全选
+  // 全选/取消全选（选中所有数据，包括未加载的）
   toggleSelectAll(checked) {
-    const tbody = document.getElementById('tableBody');
-    const checkboxes = tbody.querySelectorAll('input[type="checkbox"]');
+    // 如果当前有筛选条件，全选应该选中所有筛选后的数据
+    // 如果当前没有筛选条件，全选应该选中所有 productData
+    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
     
-    checkboxes.forEach((checkbox) => {
-      const filteredIndex = parseInt(checkbox.dataset.index);
-      if (filteredIndex !== undefined && !isNaN(filteredIndex)) {
-        checkbox.checked = checked;
-        const originalIndex = this.getOriginalIndex(filteredIndex);
-        if (checked) {
+    if (checked) {
+      // 全选：选中所有筛选后的数据
+      filteredData.forEach((item) => {
+        const originalIndex = this.productData.indexOf(item);
+        if (originalIndex !== -1) {
           this.selectedRows.add(originalIndex);
-        } else {
-          this.selectedRows.delete(originalIndex);
         }
-        this.updateRowStyle(filteredIndex, checked);
-      }
-    });
+      });
+      
+      // 更新所有已显示的行
+      const tbody = document.getElementById('tableBody');
+      const rows = tbody ? tbody.querySelectorAll('tr') : [];
+      rows.forEach((row) => {
+        if (row.style.display === 'none') return;
+        
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          const filteredIndex = parseInt(checkbox.dataset.index);
+          if (filteredIndex !== undefined && !isNaN(filteredIndex)) {
+            checkbox.checked = true;
+            this.updateRowStyle(filteredIndex, true);
+          }
+        }
+      });
+    } else {
+      // 取消全选：清空所有选中
+      this.selectedRows.clear();
+      
+      // 更新所有已显示的行
+      const tbody = document.getElementById('tableBody');
+      const rows = tbody ? tbody.querySelectorAll('tr') : [];
+      rows.forEach((row) => {
+        if (row.style.display === 'none') return;
+        
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          const filteredIndex = parseInt(checkbox.dataset.index);
+          if (filteredIndex !== undefined && !isNaN(filteredIndex)) {
+            checkbox.checked = false;
+            this.updateRowStyle(filteredIndex, false);
+          }
+        }
+      });
+    }
     
     this.updateDeleteButton();
   },
@@ -466,21 +712,81 @@ const App = {
       return;
     }
     
+    // 从大到小排序，避免删除时索引变化影响
     const sortedIndices = Array.from(this.selectedRows).sort((a, b) => b - a);
     
-    sortedIndices.forEach((index) => {
-      this.productData.splice(index, 1);
+    // 使用filteredIndicesMap获取原始索引
+    const originalIndicesToDelete = sortedIndices.map(index => {
+      // 如果当前有筛选，需要通过filteredIndicesMap找到原始索引
+      if (this.filteredIndicesMap && this.filteredIndicesMap.size > 0) {
+        // 查找filteredIndicesMap中value等于index的key
+        for (const [filteredIndex, originalIndex] of this.filteredIndicesMap.entries()) {
+          if (originalIndex === index) {
+            return originalIndex;
+          }
+        }
+        return index;
+      }
+      return index;
     });
     
+    // 从productData中删除
+    originalIndicesToDelete.forEach(index => {
+      if (index >= 0 && index < this.productData.length) {
+        this.productData.splice(index, 1);
+      }
+    });
+    
+    // 更新统计数据：增加已删除数量，减少入围数量
+    this.statistics.deleted += selectedCount;
+    this.statistics.qualified = this.productData.length;
+    
+    // 清空选中状态
     this.selectedRows.clear();
     
+    // 如果全部删除，显示空状态
     if (this.productData.length === 0) {
       this.clearData();
       return;
     }
     
+    // 重置表格渲染状态，强制重新渲染
+    TableRenderer.currentDisplayedData = [];
+    TableRenderer.displayedCount = 0;
+    TableRenderer.isLoading = false;
+    
+    // 更新数据条数
     this.updateFileButtonCount(this.productData.length);
-    this.applyFiltersAndRender();
+    
+    // 更新统计显示
+    this.updateStatisticsDisplay();
+    
+    // 强制重新渲染（不使用筛选当前显示数据的方式）
+    this.forceRerender();
+  },
+
+  // 强制重新渲染表格（删除后使用）
+  forceRerender() {
+    // 基于全部 productData 重新筛选和渲染
+    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
+    
+    const filteredIndices = new Map();
+    filteredData.forEach((item, filteredIndex) => {
+      const originalIndex = this.productData.indexOf(item);
+      if (originalIndex !== -1) {
+        filteredIndices.set(filteredIndex, originalIndex);
+      }
+    });
+    
+    this.filteredIndicesMap = filteredIndices;
+    
+    this.updateFileButtonCount(filteredData.length);
+    TableRenderer.renderLazy(filteredData, filteredIndices);
+    
+    setTimeout(() => {
+      this.updateSelectAllCheckbox();
+      this.updateDeleteButton();
+    }, 100);
   },
 
   // 重置筛选状态
@@ -488,7 +794,7 @@ const App = {
     this.filterState = {
       qualityLevels: [],
       actualSuggestedOrder: {
-        operator: '=',
+        operator: '<',
         value: null
       },
       search: {
@@ -584,6 +890,10 @@ const App = {
     const actualOrderOperator = document.getElementById('actualOrderOperator');
     const actualOrderValue = document.getElementById('actualOrderValue');
     if (actualOrderOperator && actualOrderValue) {
+      // 设置默认值为"小于"
+      actualOrderOperator.value = '<';
+      this.filterState.actualSuggestedOrder.operator = '<';
+      
       actualOrderOperator.addEventListener('change', () => {
         this.filterState.actualSuggestedOrder.operator = actualOrderOperator.value;
         this.applyFiltersAndRender();
@@ -616,32 +926,66 @@ const App = {
 
   // 应用筛选和搜索并渲染
   applyFiltersAndRender() {
-    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
+    // 如果表格已有数据显示且 currentDisplayedData 存在，则只筛选当前显示的数据
+    const tbody = document.getElementById('tableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    const hasDisplayedRows = rows.length > 0;
     
-    const filteredIndices = new Map();
-    filteredData.forEach((item, filteredIndex) => {
-      const originalIndex = this.productData.indexOf(item);
-      if (originalIndex !== -1) {
-        filteredIndices.set(filteredIndex, originalIndex);
-      }
-    });
+    // 检查 currentDisplayedData 是否与 productData 同步（防止删除后数据不一致）
+    // 如果 currentDisplayedData 为空，或者其中的数据不在 productData 中，说明需要重新渲染
+    const isDataSynced = TableRenderer.currentDisplayedData.length > 0 && 
+                         TableRenderer.currentDisplayedData.every(item => this.productData.includes(item));
     
-    this.filteredIndicesMap = filteredIndices;
-    
-    this.updateFileButtonCount(filteredData.length);
-    TableRenderer.renderLazy(filteredData, filteredIndices);
-    
-    setTimeout(() => {
-      this.updateSelectAllCheckbox();
-      this.updateDeleteButton();
-    }, 100);
+    if (hasDisplayedRows && TableRenderer.currentDisplayedData.length > 0 && isDataSynced) {
+      // 筛选当前已显示的数据（隐藏/显示行）
+      const visibleCount = TableRenderer.filterDisplayedRows(this.filterState);
+      this.updateFileButtonCount(visibleCount);
+      
+      setTimeout(() => {
+        this.updateSelectAllCheckbox();
+        this.updateDeleteButton();
+      }, 100);
+    } else {
+      // 首次加载、没有显示数据或数据不同步时，基于全部 productData 重新筛选和渲染
+      const filteredData = FilterService.applyFilters(this.productData, this.filterState);
+      
+      const filteredIndices = new Map();
+      filteredData.forEach((item, filteredIndex) => {
+        const originalIndex = this.productData.indexOf(item);
+        if (originalIndex !== -1) {
+          filteredIndices.set(filteredIndex, originalIndex);
+        }
+      });
+      
+      this.filteredIndicesMap = filteredIndices;
+      
+      this.updateFileButtonCount(filteredData.length);
+      TableRenderer.renderLazy(filteredData, filteredIndices);
+      
+      setTimeout(() => {
+        this.updateSelectAllCheckbox();
+        this.updateDeleteButton();
+      }, 100);
+    }
   },
 
   // 清除筛选
   clearFilters() {
+    // 如果表格已有数据显示，则显示所有行
+    const tbody = document.getElementById('tableBody');
+    const rows = tbody ? tbody.querySelectorAll('tr') : [];
+    
+    if (rows.length > 0) {
+      // 显示所有行
+      rows.forEach(row => {
+        row.style.display = '';
+      });
+      this.updateFileButtonCount(rows.length);
+    }
+    
     this.filterState.qualityLevels = [];
     this.filterState.actualSuggestedOrder = {
-      operator: '=',
+      operator: '<',
       value: null
     };
     
@@ -789,6 +1133,54 @@ function selectAllQualityLevels() {
 function clearQualityLevels() {
   App.clearQualityLevels();
 }
+
+// 设置相关全局函数
+function openSettingsModal() {
+  const modal = document.getElementById('settingsModal');
+  const thresholdInput = document.getElementById('thresholdInput');
+  if (modal && thresholdInput) {
+    thresholdInput.value = App.getEliminationThreshold();
+    modal.style.display = 'flex';
+  }
+}
+
+function closeSettingsModal() {
+  const modal = document.getElementById('settingsModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function saveSettings() {
+  const thresholdInput = document.getElementById('thresholdInput');
+  if (thresholdInput) {
+    const threshold = thresholdInput.value;
+    if (App.saveSettings(threshold)) {
+      closeSettingsModal();
+      
+      // 如果有数据，重新应用筛选
+      if (App.productData.length > 0) {
+        App.applyFiltersAndRender();
+      }
+      
+      alert('设置已保存！');
+    } else {
+      alert('请输入有效的数值！');
+    }
+  }
+}
+
+// 点击模态框外部关闭
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('settingsModal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeSettingsModal();
+      }
+    });
+  }
+});
 
 // 初始化SheetJS库加载
 if (document.readyState === 'loading') {

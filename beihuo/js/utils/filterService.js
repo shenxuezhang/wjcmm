@@ -26,6 +26,17 @@ const FilterService = {
     if (isNaN(numValue)) return data;
     
     return data.filter(item => {
+      // 严格检查：确保只筛选已通过淘汰机制的数据（rawSuggestedOrder >= 淘汰阈值）
+      const rawOrder = item.rawSuggestedOrder;
+      const threshold = App.getEliminationThreshold();
+      if (rawOrder === undefined || rawOrder === null || 
+          typeof rawOrder !== 'number' || 
+          isNaN(rawOrder) || 
+          !isFinite(rawOrder) || 
+          rawOrder < threshold) {
+        return false;
+      }
+      
       const actual = item.actualSuggestedOrder || 0;
       switch(operator) {
         case '=': return actual === numValue;
@@ -60,7 +71,17 @@ const FilterService = {
 
   // 应用所有筛选和搜索条件
   applyFilters(data, filterState) {
-    let result = [...data];
+    // 首先过滤掉已淘汰的数据（rawSuggestedOrder < 淘汰阈值）
+    const threshold = App.getEliminationThreshold();
+    let result = data.filter(item => {
+      const rawOrder = item.rawSuggestedOrder;
+      return rawOrder !== undefined && 
+             rawOrder !== null && 
+             typeof rawOrder === 'number' && 
+             !isNaN(rawOrder) && 
+             isFinite(rawOrder) && 
+             rawOrder >= threshold;
+    });
     
     if (!filterState) return result;
     

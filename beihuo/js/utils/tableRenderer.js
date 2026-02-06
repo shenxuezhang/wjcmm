@@ -3,6 +3,7 @@ const TableRenderer = {
   displayedCount: 0,
   isLoading: false,
   filteredIndicesMap: null,
+  currentDisplayedData: [], // 当前已显示的数据
 
   // 显示骨架屏
   showSkeleton() {
@@ -32,19 +33,130 @@ const TableRenderer = {
     }
   },
 
-  // 懒加载渲染表格
+  // 渲染表格（一次性渲染所有数据）
   renderLazy(productData, filteredIndicesMap) {
-    this.displayedCount = 0;
+    this.displayedCount = productData.length;
     this.isLoading = false;
     this.filteredIndicesMap = filteredIndicesMap || null;
+    this.currentDisplayedData = [...productData]; // 保存当前显示的数据
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
     
     document.getElementById('loadingOverlay').style.display = 'flex';
     
+    // 使用 requestAnimationFrame 优化渲染性能
     requestAnimationFrame(() => {
-      this.loadNextBatch(productData);
+      const fragment = document.createDocumentFragment();
+      
+      // 一次性渲染所有数据
+      productData.forEach((product, index) => {
+        const tr = this.createTableRow(product, index);
+        
+        // 检查是否已选中
+        const originalIndex = this.filteredIndicesMap ? 
+          (this.filteredIndicesMap.get(index) !== undefined ? this.filteredIndicesMap.get(index) : index) : 
+          index;
+        
+        if (App.selectedRows.has(originalIndex)) {
+          tr.classList.add('selected');
+          const checkbox = tr.querySelector('input[type="checkbox"]');
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        }
+        
+        fragment.appendChild(tr);
+      });
+      
+      tbody.appendChild(fragment);
+      
+      // 隐藏加载提示
+      document.getElementById('loadingOverlay').style.display = 'none';
+      
+      // 更新全选和删除按钮状态
+      setTimeout(() => {
+        App.updateSelectAllCheckbox();
+        App.updateDeleteButton();
+      }, 100);
     });
+  },
+
+  // 获取当前已显示的数据（只获取可见的行）
+  getCurrentDisplayedData() {
+    const tbody = document.getElementById('tableBody');
+    const rows = tbody.querySelectorAll('tr');
+    const displayedData = [];
+    
+    rows.forEach((row, index) => {
+      // 只获取当前可见的行（没有被隐藏的）
+      if (row.style.display === 'none') return;
+      
+      const dataIndex = row.dataset.index;
+      if (dataIndex !== undefined) {
+        const filteredIndex = parseInt(dataIndex);
+        if (this.currentDisplayedData && this.currentDisplayedData[filteredIndex]) {
+          displayedData.push(this.currentDisplayedData[filteredIndex]);
+        }
+      }
+    });
+    
+    return displayedData;
+  },
+
+  // 筛选当前显示的数据（隐藏/显示行）
+  filterDisplayedRows(filterState) {
+    const tbody = document.getElementById('tableBody');
+    const rows = tbody.querySelectorAll('tr');
+    
+    if (rows.length === 0) return 0;
+    
+    // 获取当前已显示的数据（包括被隐藏的）
+    const allDisplayedData = [];
+    rows.forEach((row) => {
+      const dataIndex = row.dataset.index;
+      if (dataIndex !== undefined) {
+        const filteredIndex = parseInt(dataIndex);
+        if (this.currentDisplayedData && this.currentDisplayedData[filteredIndex]) {
+          allDisplayedData.push({
+            row: row,
+            product: this.currentDisplayedData[filteredIndex],
+            index: filteredIndex
+          });
+        }
+      }
+    });
+    
+    if (allDisplayedData.length === 0) return 0;
+    
+    // 提取产品数据
+    const displayedProducts = allDisplayedData.map(item => item.product);
+    
+    // 对已显示的数据进行筛选
+    const filteredData = FilterService.applyFilters(displayedProducts, filterState);
+    
+    // 创建匹配数据的索引 Set 用于快速查找
+    const matchedIndices = new Set();
+    filteredData.forEach(filteredItem => {
+      // 通过索引匹配
+      allDisplayedData.forEach((item, idx) => {
+        if (item.product === filteredItem) {
+          matchedIndices.add(item.index);
+        }
+      });
+    });
+    
+    // 遍历所有行，根据筛选结果显示/隐藏
+    let visibleCount = 0;
+    allDisplayedData.forEach(item => {
+      if (matchedIndices.has(item.index)) {
+        item.row.style.display = '';
+        visibleCount++;
+      } else {
+        item.row.style.display = 'none';
+      }
+    });
+    
+    return visibleCount;
   },
 
   // 加载下一批数据

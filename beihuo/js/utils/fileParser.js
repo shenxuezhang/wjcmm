@@ -95,7 +95,10 @@ const FileParser = {
   readSKCField(sheet, rowIndex, skcIndex) {
     if (skcIndex === undefined) return '';
     
-    const cellAddress = XLSX.utils.encode_cell({ r: rowIndex + 1, c: skcIndex });
+    // rowIndex 对应 jsonData 的索引，jsonData[0]是表头，jsonData[1]是第1行数据
+    // SheetJS中，r:0是第1行（表头），r:1是第2行（第1行数据）
+    // 所以 rowIndex 直接对应 SheetJS 的行号 r
+    const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: skcIndex });
     const cell = sheet[cellAddress];
     
     if (cell) {
@@ -116,10 +119,49 @@ const FileParser = {
     return isNaN(num) ? 0 : num;
   },
 
+  // 读取文本字段（防止被转换为其他格式）
+  readTextField(sheet, rowIndex, colIndex) {
+    if (colIndex === undefined || colIndex === null) return '';
+    
+    // rowIndex 对应 jsonData 的索引，jsonData[0]是表头，jsonData[1]是第1行数据
+    // SheetJS中，r:0是第1行（表头），r:1是第2行（第1行数据）
+    // 所以 rowIndex 直接对应 SheetJS 的行号 r
+    const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+    const cell = sheet[cellAddress];
+    
+    if (cell) {
+      // 优先使用格式化文本（w属性）
+      if (cell.w !== undefined && cell.w !== null && cell.w !== '') {
+        return String(cell.w).trim();
+      }
+      // 其次使用原始值（v属性）
+      if (cell.v !== undefined && cell.v !== null) {
+        return String(cell.v).trim();
+      }
+    }
+    
+    return '';
+  },
+
   // 解析产品数据行
   parseProductRow(row, headerMap, sheet, rowIndex) {
     const skcIndex = headerMap['skc'];
     const skcStr = this.readSKCField(sheet, rowIndex, skcIndex);
+    
+    // 读取"低销尾品不允许下单"字段（优先使用原始单元格读取，确保正确获取"是"值）
+    const lowSalesNotAllowedIndex = headerMap['lowSalesNotAllowed'];
+    let lowSalesNotAllowed = '';
+    if (lowSalesNotAllowedIndex !== undefined && lowSalesNotAllowedIndex !== null) {
+      // 优先从原始sheet读取，确保获取到正确的文本值
+      lowSalesNotAllowed = this.readTextField(sheet, rowIndex, lowSalesNotAllowedIndex);
+      // 如果从sheet读取失败或为空，再从row数组读取
+      if ((!lowSalesNotAllowed || lowSalesNotAllowed === '') && row[lowSalesNotAllowedIndex] !== undefined && row[lowSalesNotAllowedIndex] !== null) {
+        const rowValue = String(row[lowSalesNotAllowedIndex]).trim();
+        if (rowValue) {
+          lowSalesNotAllowed = rowValue;
+        }
+      }
+    }
     
     return {
       imageUrl: row[headerMap['imageUrl']] !== undefined ? String(row[headerMap['imageUrl']]).trim() : '',
@@ -134,7 +176,8 @@ const FileParser = {
       pendingShipment: this.parseNumber(row[headerMap['pendingShipment']]),
       inTransit: this.parseNumber(row[headerMap['inTransit']]),
       pendingShelf: this.parseNumber(row[headerMap['pendingShelf']]),
-      sheinStock: this.parseNumber(row[headerMap['sheinStock']])
+      sheinStock: this.parseNumber(row[headerMap['sheinStock']]),
+      lowSalesNotAllowed: lowSalesNotAllowed
     };
   }
 };

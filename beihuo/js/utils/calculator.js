@@ -21,7 +21,12 @@ const Calculator = {
     const totalStock = pendingShipment + inTransit + pendingShelf + sheinStock;
     const suggestedOrder = product.dailySales * totalDays - totalStock;
 
-    product.rawSuggestedOrder = suggestedOrder;
+    // 确保 rawSuggestedOrder 是有效数字
+    if (isNaN(suggestedOrder) || !isFinite(suggestedOrder)) {
+      product.rawSuggestedOrder = NaN;
+    } else {
+      product.rawSuggestedOrder = suggestedOrder;
+    }
 
     // 实际建议单数：使用正常的四舍五入算法（Math.round）
     if (isNaN(suggestedOrder) || !isFinite(suggestedOrder)) {
