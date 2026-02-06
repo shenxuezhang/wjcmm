@@ -1023,13 +1023,13 @@ const App = {
 
   // 更新质量等级按钮文本
   updateQualityLevelButtonText() {
-    const countEl = document.getElementById('qualityLevelCount');
+    const textEl = document.getElementById('qualityLevelText');
     const count = this.filterState.qualityLevels.length;
     
     if (count > 0) {
-      countEl.textContent = `（已选${count}项）`;
+      textEl.textContent = `已选${count}项`;
     } else {
-      countEl.textContent = '';
+      textEl.textContent = '请选择';
     }
   },
 
