@@ -562,6 +562,27 @@ const App = {
     document.getElementById('exportBtn').style.display = 'none';
     document.getElementById('deleteBtn').style.display = 'none';
     document.getElementById('selectAllCheckbox').checked = false;
+    
+    // 重置空状态图标为默认成功状态
+    const emptyStateIcon = document.getElementById('emptyStateIcon');
+    const emptyStateText = document.getElementById('emptyStateText');
+    if (emptyStateIcon && emptyStateText) {
+      emptyStateIcon.className = 'empty-state-icon success';
+      emptyStateIcon.innerHTML = `
+        <svg class="empty-icon-svg" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="12" width="48" height="40" rx="4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 20H56" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M20 28V52" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M32 28V52" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M44 28V52" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="20" cy="36" r="2" fill="currentColor"/>
+          <circle cx="32" cy="40" r="2" fill="currentColor"/>
+          <circle cx="44" cy="38" r="2" fill="currentColor"/>
+        </svg>
+      `;
+      emptyStateText.textContent = '请上传Excel文件开始计算';
+    }
+    
     this.updateFileButtonCount(0);
     this.updateFileNameDisplay('');
     this.updateStatisticsDisplay();
