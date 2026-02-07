@@ -32,7 +32,7 @@ const TableRenderer = {
   },
 
   // 渲染表格（一次性渲染所有数据）
-  renderLazy(productData, filteredIndicesMap) {
+  renderLazy(productData, filteredIndicesMap, scrollAnchor = null) {
     this.filteredIndicesMap = filteredIndicesMap || null;
     this.currentDisplayedData = [...productData]; // 保存当前显示的数据
     const tbody = document.getElementById('tableBody');
@@ -69,12 +69,61 @@ const TableRenderer = {
       // 隐藏加载提示
       document.getElementById('loadingOverlay').style.display = 'none';
       
+      // 恢复滚动位置
+      if (scrollAnchor) {
+        this.restoreScrollPosition(scrollAnchor);
+      }
+      
       // 更新全选和删除按钮状态
       setTimeout(() => {
         App.updateSelectAllCheckbox();
         App.updateDeleteButton();
       }, 100);
     });
+  },
+
+  // 恢复滚动位置
+  restoreScrollPosition(scrollAnchor) {
+    const tableWrapper = document.getElementById('tableWrapper');
+    const tbody = document.getElementById('tableBody');
+    
+    if (!tableWrapper || !tbody || !scrollAnchor) return;
+    
+    // 等待DOM渲染完成
+    setTimeout(() => {
+      const rows = tbody.querySelectorAll('tr');
+      let targetRow = null;
+      
+      // 查找目标行
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].style.display === 'none') continue;
+        
+        const filteredIndex = parseInt(rows[i].dataset.index);
+        if (!isNaN(filteredIndex) && this.currentDisplayedData[filteredIndex]) {
+          const product = this.currentDisplayedData[filteredIndex];
+          const productAnchor = product.skc || product.sku || `index_${filteredIndex}`;
+          
+          if (productAnchor === scrollAnchor) {
+            targetRow = rows[i];
+            break;
+          }
+        }
+      }
+      
+      // 如果找到目标行，滚动到该行
+      if (targetRow) {
+        // 获取目标行相对于表格容器的位置
+        const tbody = targetRow.parentElement;
+        const rowOffsetTop = targetRow.offsetTop;
+        const tbodyOffsetTop = tbody.offsetTop;
+        
+        // 计算目标行相对于表格容器的滚动位置（减去表头高度，稍微向上偏移）
+        const scrollTop = rowOffsetTop + tbodyOffsetTop - 20;
+        
+        // 滚动到目标行
+        tableWrapper.scrollTop = Math.max(0, scrollTop);
+      }
+    }, 50);
   },
 
   // 获取当前已显示的数据（只获取可见的行）

@@ -889,6 +889,32 @@ const App = {
     
     const selectedCount = this.selectedRows.size;
     
+    // 保存删除前的滚动位置：找到第一个可见行的数据标识
+    const tableWrapper = document.getElementById('tableWrapper');
+    const tbody = document.getElementById('tableBody');
+    let scrollAnchor = null; // 用于定位的数据标识
+    
+    if (tableWrapper && tbody) {
+      const rows = tbody.querySelectorAll('tr');
+      // 找到第一个可见的行
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].style.display !== 'none') {
+          const rect = rows[i].getBoundingClientRect();
+          const wrapperRect = tableWrapper.getBoundingClientRect();
+          // 检查行是否在可见区域内
+          if (rect.top >= wrapperRect.top && rect.top <= wrapperRect.bottom) {
+            const filteredIndex = parseInt(rows[i].dataset.index);
+            if (!isNaN(filteredIndex) && TableRenderer.currentDisplayedData[filteredIndex]) {
+              // 使用SKC作为唯一标识（如果SKC为空，使用索引）
+              const product = TableRenderer.currentDisplayedData[filteredIndex];
+              scrollAnchor = product.skc || product.sku || `index_${filteredIndex}`;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
     // 从大到小排序，避免删除时索引变化影响
     const sortedIndices = Array.from(this.selectedRows).sort((a, b) => b - a);
     
@@ -937,11 +963,11 @@ const App = {
     this.updateStatisticsDisplay();
     
     // 强制重新渲染（不使用筛选当前显示数据的方式）
-    this.forceRerender();
+    this.forceRerender(scrollAnchor);
   },
 
   // 强制重新渲染表格（删除后使用）
-  forceRerender() {
+  forceRerender(scrollAnchor = null) {
     // 基于全部 productData 重新筛选和渲染
     const filteredData = FilterService.applyFilters(this.productData, this.filterState);
     
@@ -956,7 +982,7 @@ const App = {
     this.filteredIndicesMap = filteredIndices;
     
     this.updateFileButtonCount(filteredData.length);
-    TableRenderer.renderLazy(filteredData, filteredIndices);
+    TableRenderer.renderLazy(filteredData, filteredIndices, scrollAnchor);
     
     setTimeout(() => {
       this.updateSelectAllCheckbox();
