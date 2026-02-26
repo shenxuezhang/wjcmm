@@ -31,24 +31,21 @@ const TableRenderer = {
     }
   },
 
-  // 渲染表格（一次性渲染所有数据）
-  renderLazy(productData, filteredIndicesMap, scrollAnchor = null) {
+  // 渲染表格（一次性渲染所有数据，restoredProducts 用于撤销后高亮）
+  renderLazy(productData, filteredIndicesMap, scrollAnchor = null, restoredProducts = null) {
     this.filteredIndicesMap = filteredIndicesMap || null;
-    this.currentDisplayedData = [...productData]; // 保存当前显示的数据
+    this.currentDisplayedData = [...productData];
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
     
     document.getElementById('loadingOverlay').style.display = 'flex';
     
-    // 使用 requestAnimationFrame 优化渲染性能
     requestAnimationFrame(() => {
       const fragment = document.createDocumentFragment();
       
-      // 一次性渲染所有数据
       productData.forEach((product, index) => {
         const tr = this.createTableRow(product, index);
         
-        // 检查是否已选中
         const originalIndex = this.filteredIndicesMap ? 
           (this.filteredIndicesMap.get(index) !== undefined ? this.filteredIndicesMap.get(index) : index) : 
           index;
@@ -66,15 +63,27 @@ const TableRenderer = {
       
       tbody.appendChild(fragment);
       
-      // 隐藏加载提示
       document.getElementById('loadingOverlay').style.display = 'none';
       
-      // 恢复滚动位置
       if (scrollAnchor) {
         this.restoreScrollPosition(scrollAnchor);
       }
       
-      // 更新全选和删除按钮状态
+      // 撤销恢复行高亮：浅绿背景，2.5 秒后渐隐
+      if (restoredProducts && restoredProducts.size > 0) {
+        const rowsToHighlight = [];
+        productData.forEach((product, index) => {
+          if (restoredProducts.has(product)) {
+            const row = tbody.querySelector(`tr[data-index="${index}"]`);
+            if (row) rowsToHighlight.push(row);
+          }
+        });
+        rowsToHighlight.forEach(row => row.classList.add('restored-highlight'));
+        setTimeout(() => {
+          rowsToHighlight.forEach(row => row.classList.remove('restored-highlight'));
+        }, 2500);
+      }
+      
       setTimeout(() => {
         App.updateSelectAllCheckbox();
         App.updateDeleteButton();

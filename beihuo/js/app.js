@@ -29,6 +29,7 @@ const App = {
   eliminationThreshold: 0, // 淘汰阈值，默认0
   filterDebounceTimer: null, // 筛选防抖定时器
   _processingStats: { totalRows: 0, qualifiedCount: 0 }, // 数据处理统计（临时）
+  deletedHistory: [], // 删除历史，用于撤销（每项：{ products, indices }）
 
   // 初始化应用
   init() {
@@ -293,6 +294,7 @@ const App = {
         }
 
         this.productData = [];
+        this.deletedHistory = [];
         let totalRows = 0; // 统计总数据行数（不包括表头）
         let qualifiedCount = 0; // 统计符合条件的数据量
         
@@ -339,10 +341,12 @@ const App = {
         this.initFilterUI();
         this.applyFiltersAndRender();
         this.updateStatisticsDisplay();
+        this.updateExportCountDisplay();
         
         setTimeout(() => {
           this.updateSelectAllCheckbox();
           this.updateDeleteButton();
+          this.updateUndoDeleteButton();
         }, 100);
       } catch (error) {
         this.hideProgressBar();
@@ -543,6 +547,7 @@ const App = {
     this.productData = [];
     this.headerMap = {};
     this.selectedRows.clear();
+    this.deletedHistory = [];
     this.resetFilterState();
     TableRenderer.currentDisplayedData = [];
     this.filteredIndicesMap.clear(); // 清空索引映射
@@ -561,6 +566,8 @@ const App = {
     document.getElementById('fileInput').value = '';
     document.getElementById('exportBtn').style.display = 'none';
     document.getElementById('deleteBtn').style.display = 'none';
+    const undoDeleteBtn = document.getElementById('undoDeleteBtn');
+    if (undoDeleteBtn) undoDeleteBtn.style.display = 'none';
     document.getElementById('selectAllCheckbox').checked = false;
     
     // 重置空状态图标为默认成功状态
@@ -587,6 +594,7 @@ const App = {
     this.updateFileNameDisplay('');
     this.updateStatisticsDisplay();
     this.updateDeleteButton();
+    this.updateUndoDeleteButton();
   },
 
   // 切换行选中状态
@@ -771,6 +779,32 @@ const App = {
       deleteBtn.disabled = true;
       deleteBtn.textContent = '删除选中';
     }
+    this.updateExportCountDisplay();
+  },
+
+  // 更新导出按钮数量显示：无勾选或全选显示"(全部)"，部分勾选显示"(X条)"
+  updateExportCountDisplay() {
+    const el = document.getElementById('exportCountDisplay');
+    if (!el) return;
+    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
+    const selectedCount = this.selectedRows.size;
+    if (selectedCount === 0 || selectedCount === filteredData.length) {
+      el.textContent = '（全部）';
+    } else {
+      el.textContent = `（${selectedCount}条）`;
+    }
+  },
+
+  // 更新撤销删除按钮状态
+  updateUndoDeleteButton() {
+    const undoBtn = document.getElementById('undoDeleteBtn');
+    if (!undoBtn) return;
+    if (this.productData.length > 0) {
+      undoBtn.style.display = 'inline-block';
+      undoBtn.disabled = this.deletedHistory.length === 0;
+    } else {
+      undoBtn.style.display = 'none';
+    }
   },
 
   // 设置复选框拖动选择
@@ -933,6 +967,14 @@ const App = {
       return index;
     });
     
+    // 暂存待删除的数据（用于撤销，保留索引与数据的对应关系）
+    const deletedItems = originalIndicesToDelete
+      .filter(index => index >= 0 && index < this.productData.length)
+      .map(index => ({ index, product: this.productData[index] }));
+    if (deletedItems.length > 0) {
+      this.deletedHistory.push(deletedItems);
+    }
+
     // 从productData中删除
     originalIndicesToDelete.forEach(index => {
       if (index >= 0 && index < this.productData.length) {
@@ -964,11 +1006,66 @@ const App = {
     
     // 强制重新渲染（不使用筛选当前显示数据的方式）
     this.forceRerender(scrollAnchor);
+    this.updateUndoDeleteButton();
   },
 
-  // 强制重新渲染表格（删除后使用）
-  forceRerender(scrollAnchor = null) {
-    // 基于全部 productData 重新筛选和渲染
+  // 撤销删除：恢复最近一次删除的数据，并保持当前滚动位置
+  undoDelete() {
+    if (this.deletedHistory.length === 0) return;
+    const last = this.deletedHistory.pop();
+    if (!last || last.length === 0) return;
+
+    // 撤销前保存当前可见行的滚动锚点，避免恢复后回到顶部
+    const tableWrapper = document.getElementById('tableWrapper');
+    const tbody = document.getElementById('tableBody');
+    let scrollAnchor = null;
+    if (tableWrapper && tbody) {
+      const rows = tbody.querySelectorAll('tr');
+      const wrapperRect = tableWrapper.getBoundingClientRect();
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].style.display !== 'none') {
+          const rect = rows[i].getBoundingClientRect();
+          if (rect.top >= wrapperRect.top && rect.top <= wrapperRect.bottom) {
+            const filteredIndex = parseInt(rows[i].dataset.index);
+            if (!isNaN(filteredIndex) && TableRenderer.currentDisplayedData[filteredIndex]) {
+              const product = TableRenderer.currentDisplayedData[filteredIndex];
+              scrollAnchor = product.skc || product.sku || `index_${filteredIndex}`;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const sorted = [...last].sort((a, b) => a.index - b.index);
+    sorted.forEach(({ index, product }) => {
+      this.productData.splice(index, 0, product);
+    });
+    this.statistics.deleted -= last.length;
+    this.statistics.qualified = this.productData.length;
+    TableRenderer.currentDisplayedData = [];
+    this.updateFileButtonCount(this.productData.length);
+    this.updateStatisticsDisplay();
+    const restoredProducts = new Set(last.map(({ product }) => product));
+    this.forceRerender(scrollAnchor, restoredProducts);
+    this.updateUndoDeleteButton();
+    this.showToast(`已恢复 ${last.length} 条数据`, 'success');
+  },
+
+  // 更新撤销删除按钮状态
+  updateUndoDeleteButton() {
+    const undoBtn = document.getElementById('undoDeleteBtn');
+    if (!undoBtn) return;
+    if (this.productData.length > 0) {
+      undoBtn.style.display = 'inline-block';
+      undoBtn.disabled = this.deletedHistory.length === 0;
+    } else {
+      undoBtn.style.display = 'none';
+    }
+  },
+
+  // 强制重新渲染表格（删除后使用，restoredProducts 用于撤销后高亮恢复行）
+  forceRerender(scrollAnchor = null, restoredProducts = null) {
     const filteredData = FilterService.applyFilters(this.productData, this.filterState);
     
     const filteredIndices = new Map();
@@ -982,7 +1079,7 @@ const App = {
     this.filteredIndicesMap = filteredIndices;
     
     this.updateFileButtonCount(filteredData.length);
-    TableRenderer.renderLazy(filteredData, filteredIndices, scrollAnchor);
+    TableRenderer.renderLazy(filteredData, filteredIndices, scrollAnchor, restoredProducts);
     
     setTimeout(() => {
       this.updateSelectAllCheckbox();
@@ -1311,10 +1408,22 @@ const App = {
     }
   },
 
-  // 导出Excel（导出当前筛选后的数据）
+  // 导出Excel：有勾选则导出已勾选数据，否则导出当前筛选后的数据
   exportToExcel() {
-    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
-    ExcelService.exportToExcel(filteredData);
+    let dataToExport;
+    if (this.selectedRows.size > 0) {
+      dataToExport = Array.from(this.selectedRows)
+        .sort((a, b) => a - b)
+        .map(index => this.productData[index])
+        .filter(Boolean);
+      if (dataToExport.length === 0) {
+        showError('导出失败', '未找到有效的勾选数据，请重新选择。', '');
+        return;
+      }
+    } else {
+      dataToExport = FilterService.applyFilters(this.productData, this.filterState);
+    }
+    ExcelService.exportToExcel(dataToExport);
   }
 };
 
@@ -1333,6 +1442,10 @@ function toggleSelectAll(checked) {
 
 function deleteSelectedRows() {
   App.deleteSelectedRows();
+}
+
+function undoDelete() {
+  App.undoDelete();
 }
 
 function clearFilters() {
