@@ -21,40 +21,14 @@
     <!-- Toast提示容器 -->
     <div id="toastContainer" class="toast-container"></div>
 
-    <!-- 功能卡片区域（2x2网格：文件操作|筛选 / 数据统计|表格） -->
+    <!-- 功能卡片区域：左列(数据统计/筛选与搜索/供货方号提取) | 右列(文件操作+数据列表) -->
     <div class="function-cards-wrapper">
-      <div class="upload-section" id="uploadSection">
-          <div class="card-header">
-            <h2>文件操作<span id="fileNameDisplay" class="file-name-display"></span></h2>
-            <button class="settings-btn" id="settingsBtn" onclick="openSettingsModal()" title="设置淘汰阈值">
-              ⚙
-            </button>
-          </div>
-          <div class="card-content">
-            <div class="file-input-wrapper">
-              <input type="file" id="fileInput" accept=".xls,.xlsx" style="display: none;">
-              <button class="btn btn-primary" id="fileSelectBtn" onclick="document.getElementById('fileInput').click()">
-                📁 选择Excel文件<span id="dataCountDisplay"></span>
-              </button>
-              <button class="btn btn-secondary" onclick="clearData()">清空数据</button>
-              <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelectedRows()" style="display: none;" disabled>
-                删除选中
-              </button>
-              <button class="btn btn-secondary" id="undoDeleteBtn" onclick="undoDelete()" style="display: none;" disabled title="恢复最近一次删除">
-                撤销删除
-              </button>
-              <button class="btn btn-primary" id="exportBtn" onclick="exportToExcel()" style="display: none;">
-                导出数据<span id="exportCountDisplay"></span>
-              </button>
-            </div>
-          </div>
-        </div>
       <div class="filter-section" id="filterSection" style="display: none;">
         <div class="card-header">
           <h2>筛选与搜索</h2>
         </div>
         <div class="card-content">
-          <div class="filter-search-row">
+          <div class="filter-filters-row">
             <div class="filter-group">
               <label>质量等级：</label>
               <div class="quality-level-filter-wrapper">
@@ -85,6 +59,8 @@
               </div>
             </div>
             <button class="btn btn-secondary" onclick="clearFilters()">清除筛选</button>
+          </div>
+          <div class="filter-search-row">
             <div class="filter-group">
               <label>供货方号：</label>
               <div class="input-wrapper search-input-wrapper">
@@ -101,6 +77,25 @@
             </div>
             <button class="btn btn-primary" onclick="searchAll()">🔍 搜索</button>
             <button class="btn btn-secondary" onclick="clearSearch()">清除搜索</button>
+          </div>
+        </div>
+      </div>
+      <div class="supplier-codes-section" id="supplierCodesSection" style="display: none;">
+        <div class="card-header">
+          <h2>供货方号提取</h2>
+        </div>
+        <div class="card-content">
+          <div class="supplier-codes-table-wrapper">
+            <table class="supplier-codes-table">
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>图片</th>
+                  <th>供货方号</th>
+                </tr>
+              </thead>
+              <tbody id="supplierCodesList"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -142,6 +137,33 @@
         </div>
       </div>
       <div class="main-content-area">
+        <!-- 文件操作卡片 -->
+        <div class="upload-section" id="uploadSection">
+          <div class="card-header">
+            <h2>文件操作<span id="fileNameDisplay" class="file-name-display"></span></h2>
+            <button class="settings-btn" id="settingsBtn" onclick="openSettingsModal()" title="设置淘汰阈值">
+              ⚙
+            </button>
+          </div>
+          <div class="card-content">
+            <div class="file-input-wrapper">
+              <input type="file" id="fileInput" accept=".xls,.xlsx" style="display: none;">
+              <button class="btn btn-primary" id="fileSelectBtn" onclick="document.getElementById('fileInput').click()">
+                📁 选择Excel文件<span id="dataCountDisplay"></span>
+              </button>
+              <button class="btn btn-secondary" onclick="clearData()">清空数据</button>
+              <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelectedRows()" style="display: none;" disabled>
+                删除选中
+              </button>
+              <button class="btn btn-secondary" id="undoDeleteBtn" onclick="undoDelete()" style="display: none;" disabled title="恢复最近一次删除">
+                撤销删除
+              </button>
+              <button class="btn btn-primary" id="exportBtn" onclick="exportToExcel()" style="display: none;">
+                导出数据<span id="exportCountDisplay"></span>
+              </button>
+            </div>
+          </div>
+        </div>
         <!-- 骨架屏 -->
         <div class="skeleton-wrapper" id="skeletonWrapper" style="display: none;">
           <div id="skeletonContent"></div>

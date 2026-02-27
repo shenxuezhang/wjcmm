@@ -332,6 +332,7 @@ const App = {
         document.getElementById('tableWrapper').style.display = 'block';
         document.getElementById('filterSection').style.display = 'block';
         document.getElementById('statisticsSection').style.display = 'block';
+        document.getElementById('supplierCodesSection').style.display = 'flex';
         document.getElementById('exportBtn').style.display = 'inline-block';
         document.getElementById('deleteBtn').style.display = 'inline-block';
         
@@ -347,6 +348,7 @@ const App = {
           this.updateSelectAllCheckbox();
           this.updateDeleteButton();
           this.updateUndoDeleteButton();
+          this.updateSupplierCodesDisplay();
         }, 100);
       } catch (error) {
         this.hideProgressBar();
@@ -562,6 +564,8 @@ const App = {
     document.getElementById('skeletonWrapper').style.display = 'none';
     document.getElementById('filterSection').style.display = 'none';
     document.getElementById('statisticsSection').style.display = 'none';
+    const supplierCodesSection = document.getElementById('supplierCodesSection');
+    if (supplierCodesSection) supplierCodesSection.style.display = 'none';
     document.getElementById('emptyState').style.display = 'block';
     document.getElementById('fileInput').value = '';
     document.getElementById('exportBtn').style.display = 'none';
@@ -1064,6 +1068,93 @@ const App = {
     }
   },
 
+  // 更新供货方号提取显示（从当前列表展示数据中提取去重，表格形式）
+  updateSupplierCodesDisplay() {
+    const tbody = document.getElementById('supplierCodesList');
+    if (!tbody) return;
+
+    const filteredData = FilterService.applyFilters(this.productData, this.filterState);
+    const codeToProduct = new Map();
+    filteredData.forEach(p => {
+      const code = (p.supplierCode || '-').toString().trim();
+      if (!codeToProduct.has(code)) {
+        codeToProduct.set(code, p);
+      }
+    });
+    const codes = [...codeToProduct.keys()];
+
+    tbody.innerHTML = '';
+    if (codes.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 3;
+      td.textContent = '暂无数据';
+      td.style.textAlign = 'center';
+      td.style.color = '#8c959f';
+      td.style.padding = '16px';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    codes.forEach((code, index) => {
+      const product = codeToProduct.get(code);
+      const tr = document.createElement('tr');
+      const tdNo = document.createElement('td');
+      tdNo.textContent = index + 1;
+      const tdImg = document.createElement('td');
+      if (product.imageUrl) {
+        const img = document.createElement('img');
+        img.className = 'supplier-code-img';
+        img.src = product.imageUrl;
+        img.loading = 'lazy';
+        img.alt = code;
+        img.onerror = function() {
+          const div = document.createElement('div');
+          div.className = 'supplier-code-img error';
+          div.textContent = '无图';
+          this.parentNode.replaceChild(div, this);
+        };
+        tdImg.appendChild(img);
+      } else {
+        const div = document.createElement('div');
+        div.className = 'supplier-code-img error';
+        div.textContent = '无图';
+        tdImg.appendChild(div);
+      }
+      const tdCode = document.createElement('td');
+      tdCode.className = 'supplier-code-cell';
+      const codeSpan = document.createElement('span');
+      codeSpan.textContent = code;
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'supplier-code-copy-btn';
+      copyBtn.type = 'button';
+      copyBtn.title = '复制供货方号';
+      const copyIconSvg = '<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const checkIconSvg = '<svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>';
+      copyBtn.innerHTML = copyIconSvg;
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(code).then(() => {
+          this.showToast('已复制供货方号', 'success');
+          copyBtn.innerHTML = checkIconSvg;
+          copyBtn.classList.add('copy-success');
+          setTimeout(() => {
+            copyBtn.innerHTML = copyIconSvg;
+            copyBtn.classList.remove('copy-success');
+          }, 1500);
+        }).catch(() => {
+          this.showToast('复制失败', 'error');
+        });
+      });
+      tdCode.appendChild(codeSpan);
+      tdCode.appendChild(copyBtn);
+      tr.appendChild(tdNo);
+      tr.appendChild(tdImg);
+      tr.appendChild(tdCode);
+      tbody.appendChild(tr);
+    });
+  },
+
   // 强制重新渲染表格（删除后使用，restoredProducts 用于撤销后高亮恢复行）
   forceRerender(scrollAnchor = null, restoredProducts = null) {
     const filteredData = FilterService.applyFilters(this.productData, this.filterState);
@@ -1080,7 +1171,7 @@ const App = {
     
     this.updateFileButtonCount(filteredData.length);
     TableRenderer.renderLazy(filteredData, filteredIndices, scrollAnchor, restoredProducts);
-    
+    this.updateSupplierCodesDisplay();
     setTimeout(() => {
       this.updateSelectAllCheckbox();
       this.updateDeleteButton();
@@ -1252,10 +1343,9 @@ const App = {
                          TableRenderer.currentDisplayedData.every(item => this.productData.includes(item));
     
     if (hasDisplayedRows && TableRenderer.currentDisplayedData.length > 0 && isDataSynced) {
-      // 筛选当前已显示的数据（隐藏/显示行）
       const visibleCount = TableRenderer.filterDisplayedRows(this.filterState);
       this.updateFileButtonCount(visibleCount);
-      
+      this.updateSupplierCodesDisplay();
       setTimeout(() => {
         this.updateSelectAllCheckbox();
         this.updateDeleteButton();
@@ -1276,7 +1366,7 @@ const App = {
       
       this.updateFileButtonCount(filteredData.length);
       TableRenderer.renderLazy(filteredData, filteredIndices);
-      
+      this.updateSupplierCodesDisplay();
       setTimeout(() => {
         this.updateSelectAllCheckbox();
         this.updateDeleteButton();
